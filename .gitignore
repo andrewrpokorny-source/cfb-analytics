@@ -1,0 +1,15 @@
+# Ignore the virtual environment (it's too big and can be recreated)
+venv/
+__pycache__/
+*.pyc
+
+# Ignore secret keys (CRITICAL)
+.env
+
+# Optional: Ignore the large data files if you want to keep the repo clean
+# (Remove these lines if you WANT to back up your data csvs)
+*.csv
+*.pkl
+
+# Ignore system files
+.DS_Store
