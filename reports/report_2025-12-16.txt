@@ -14,7 +14,7 @@ Fetching Data for 2025 Bowl Season...
                     LSU @ Houston              LSU (-3)  DraftKings       56.5%
                      UConn @ Army          UConn (-8.5)  DraftKings       56.0%
               Virginia @ Missouri         Missouri (-7)  DraftKings       55.7%
-     Florida International @ UTSA           UTSA (-8.5)  DraftKings       55.2%
+     Florida International @ UTSA           UTSA (-9.5)  DraftKings       55.2%
              Penn State @ Clemson     Penn State (-3.5)  DraftKings       55.0%
                Georgia Tech @ BYU            BYU (-4.5)  DraftKings       55.0%
 Coastal Carolina @ Louisiana Tech Louisiana Tech (-8.5)  DraftKings       54.6%
@@ -25,7 +25,7 @@ Coastal Carolina @ Louisiana Tech Louisiana Tech (-8.5)  DraftKings       54.6%
   Missouri State @ Arkansas State Arkansas State (-1.5)  DraftKings       53.2%
              California @ Hawai'i         Hawai'i (1.5)  DraftKings       53.1%
     North Texas @ San Diego State       North Texas (3)  DraftKings       52.9%
-       Pittsburgh @ East Carolina   East Carolina (7.5)  DraftKings       52.7%
+       Pittsburgh @ East Carolina   East Carolina (8.5)  DraftKings       52.7%
                Alabama @ Oklahoma        Oklahoma (1.5)  DraftKings       52.3%
 
 ==================================================
@@ -37,7 +37,7 @@ Coastal Carolina @ Louisiana Tech Louisiana Tech (-8.5)  DraftKings       54.6%
             Louisiana @ Delaware  OVER 61.5 DraftKings      59.6%
              Toledo @ Louisville UNDER 45.5 DraftKings      57.8%
                    Arizona @ SMU UNDER 51.5 DraftKings      57.4%
-       Troy @ Jacksonville State  OVER 48.5 DraftKings      57.1%
+       Troy @ Jacksonville State  OVER 47.5 DraftKings      57.2%
        Miami (OH) @ Fresno State  OVER 42.5 DraftKings      55.7%
  Central Michigan @ Northwestern  OVER 43.5 DraftKings      55.6%
             California @ Hawai'i UNDER 54.5 DraftKings      55.5%
