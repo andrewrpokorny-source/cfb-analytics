@@ -1,102 +1,133 @@
 import streamlit as st
 import pandas as pd
+import requests
 
-# 1. Page Config
-st.set_page_config(
-    page_title="CFB Quant Engine",
-    page_icon="🏈",
-    layout="wide"
-)
-
-# 2. Title
+st.set_page_config(page_title="CFB Quant Grader", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
-st.markdown("### Powered by Decay Metrics, SRS, and Talent Composites")
 
-# 3. Load Data
-@st.cache_data
-def load_data():
+# --- 1. SETUP & DATA LOADING ---
+@st.cache_data(ttl=300) # Cache for 5 mins
+def fetch_scores():
     try:
-        df = pd.read_csv("live_predictions.csv")
-        return df
-    except FileNotFoundError:
+        api_key = st.secrets["CFBD_API_KEY"]
+        headers = {"Authorization": f"Bearer {api_key}"}
+        # Fetch games for the current week (Postseason Week 1)
+        res = requests.get("https://api.collegefootballdata.com/games", 
+                           headers=headers, 
+                           params={"year": 2025, "seasonType": "postseason", "week": 1})
+        if res.status_code == 200:
+            return {g['id']: g for g in res.json()}
+    except:
+        return {}
+    return {}
+
+@st.cache_data
+def load_picks():
+    try:
+        return pd.read_csv("live_predictions.csv")
+    except:
         return pd.DataFrame()
 
-df = load_data()
+df = load_picks()
+scores = fetch_scores()
 
-# 4. Color Logic for Confidence
-def color_confidence(val):
-    """
-    Colors the cell green if confidence is high (>55%), 
-    red if low (<53%).
-    Expects string input like "58.2%"
-    """
-    if pd.isna(val):
-        return ''
-    
-    # Clean string to float
-    try:
-        score = float(val.strip('%'))
-    except:
-        return ''
+# --- 2. GRADING LOGIC (COMPLETED GAMES ONLY) ---
+graded_results = []
 
-    color = ''
-    if score >= 60.0:
-        color = 'background-color: #2e7d32; color: white' # Dark Green
-    elif score >= 55.0:
-        color = 'background-color: #4caf50; color: black' # Green
-    elif score <= 52.5:
-        color = 'background-color: #ef5350; color: white' # Red
+if not df.empty and scores:
+    for _, row in df.iterrows():
+        gid = row.get("GameID")
+        game = scores.get(gid)
         
-    return color
+        # STRICTLY check for 'completed' status
+        if game and game['status'] == 'completed':
+            home_score = game.get('home_points', 0)
+            away_score = game.get('away_points', 0)
+            
+            # --- Grade Spread ---
+            # Formula: (Pick Team Score - Opponent Score) + Spread > 0
+            pick_team = row['Pick_Team']
+            line = row['Pick_Line']
+            
+            if pick_team == row['HomeTeam']:
+                margin = home_score - away_score
+            else:
+                margin = away_score - home_score
+            
+            # Handle Pushes
+            if (margin + line) == 0:
+                spread_res = "✋ PUSH"
+            elif (margin + line) > 0:
+                spread_res = "✅ WIN"
+            else:
+                spread_res = "❌ LOSS"
 
-if df.empty:
-    st.error("No predictions found. Please run the pipeline locally and push the CSV.")
-else:
-    # --- SECTION 1: TOP SPREAD PICKS ---
-    st.divider()
-    st.header("🎯 Top Spread Edges")
-    st.caption("Ranked by Model Confidence. Green = Bet, Red = Pass.")
+            # --- Grade Total ---
+            total_score = home_score + away_score
+            pick_side = row['Pick_Side'] # OVER or UNDER
+            pick_total = row['Pick_Total']
+            
+            if total_score == pick_total:
+                total_res = "✋ PUSH"
+            elif pick_side == "OVER":
+                total_res = "✅ WIN" if total_score > pick_total else "❌ LOSS"
+            else: # UNDER
+                total_res = "✅ WIN" if total_score < pick_total else "❌ LOSS"
 
-    # Sort by raw confidence if available, otherwise just display
-    spread_cols = ['Game', 'Spread Pick', 'Spread Book', 'Spread Conf']
+            graded_results.append({
+                "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
+                "Spread Bet": f"{row['Spread Pick']}",
+                "Spread Result": spread_res,
+                "Total Bet": f"{row['Total Pick']}",
+                "Total Result": total_res
+            })
+
+# --- 3. DISPLAY SECTIONS ---
+
+# A. The Report Card (Top of Page)
+if graded_results:
+    st.markdown("### 📝 Graded Results (Completed Games)")
+    results_df = pd.DataFrame(graded_results)
     
-    # We create a styler object to apply colors
-    st.dataframe(
-        df[spread_cols].style.map(color_confidence, subset=['Spread Conf']),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Spread Book": st.column_config.ImageColumn("Book") # Optional: could map logos later
-        }
-    )
+    # Simple Styler to color text green/red
+    def color_results(val):
+        if "WIN" in val: return 'color: green; font-weight: bold'
+        if "LOSS" in val: return 'color: red; font-weight: bold'
+        return 'color: gray'
 
-    # --- SECTION 2: TOP TOTALS PICKS ---
-    st.divider()
-    st.header("📉 Top Totals Edges")
-    st.caption("Over/Under Opportunities.")
-
-    total_cols = ['Game', 'Total Pick', 'Total Book', 'Total Conf']
-    
     st.dataframe(
-        df[total_cols].style.map(color_confidence, subset=['Total Conf']),
+        results_df.style.map(color_results, subset=['Spread Result', 'Total Result']),
         use_container_width=True,
         hide_index=True
     )
+    st.divider()
 
-    # --- SIDEBAR INFO ---
-    with st.sidebar:
-        st.header("⚙️ Strategy")
-        st.info("""
-        **Data Source:**
-        US Regulated Books Only
-        (DraftKings, FanDuel, MGM, etc.)
-        """)
-        
-        st.write("""
-        **Legend:**
-        * 🟢 **>60%:** Max Bet (1.5u)
-        * 🟢 **>55%:** Standard Bet (1.0u)
-        * ⚪ **53-55%:** Lean (0.5u)
-        * 🔴 **<53%:** NO BET
-        """)
-        st.caption("Last Updated via GitHub Pipeline")
+# B. The Betting Board (Upcoming Games)
+st.subheader("🔮 Upcoming Predictions")
+
+# Color Logic for Confidence
+def color_confidence(val):
+    try:
+        score = float(val.strip('%'))
+    except: return ''
+    if score >= 60.0: return 'background-color: #2e7d32; color: white'
+    elif score >= 55.0: return 'background-color: #4caf50; color: black'
+    elif score <= 52.5: return 'background-color: #ef5350; color: white'
+    return ''
+
+if not df.empty:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.caption("Spread Edges")
+        st.dataframe(
+            df[['Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']),
+            use_container_width=True, hide_index=True
+        )
+    with col2:
+        st.caption("Totals Edges")
+        st.dataframe(
+            df[['Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
+            use_container_width=True, hide_index=True
+        )
+else:
+    st.info("No predictions found. Run the pipeline!")
