@@ -1,0 +1,54 @@
+--- 🏈 CFB PREDICTOR (US REGULATED BOOKS ONLY) 🏈 ---
+Fetching Data for 2025 Bowl Season...
+   -> Fetching full season stats...
+   -> Shopping across 7 legitimate books...
+
+==================================================
+🎯 TOP SPREAD EDGES (Legit Books Only)
+==================================================
+                             Game           Spread Pick Spread Book Spread Conf
+                Iowa @ Vanderbilt     Vanderbilt (-5.5)  DraftKings       61.3%
+     Old Dominion @ South Florida  South Florida (-2.5)  DraftKings       58.5%
+             Louisiana @ Delaware          Delaware (3)  DraftKings       57.2%
+                Miami @ Texas A&M          Miami (-3.5)  DraftKings       57.1%
+                    LSU @ Houston              LSU (-3)  DraftKings       56.5%
+                     UConn @ Army          UConn (-8.5)  DraftKings       56.0%
+              Virginia @ Missouri         Missouri (-7)  DraftKings       55.7%
+     Florida International @ UTSA           UTSA (-8.5)  DraftKings       55.2%
+             Penn State @ Clemson     Penn State (-3.5)  DraftKings       55.0%
+               Georgia Tech @ BYU            BYU (-4.5)  DraftKings       55.0%
+Coastal Carolina @ Louisiana Tech Louisiana Tech (-8.5)  DraftKings       54.6%
+           New Mexico @ Minnesota     New Mexico (-2.5)  DraftKings       54.3%
+               Rice @ Texas State   Texas State (-10.5)  DraftKings       54.0%
+                        USC @ TCU             TCU (4.5)  DraftKings       54.0%
+                    Arizona @ SMU               SMU (3)  DraftKings       53.7%
+  Missouri State @ Arkansas State Arkansas State (-1.5)  DraftKings       53.2%
+             California @ Hawai'i         Hawai'i (1.5)  DraftKings       53.1%
+    North Texas @ San Diego State       North Texas (3)  DraftKings       52.9%
+       Pittsburgh @ East Carolina   East Carolina (7.5)  DraftKings       52.7%
+               Alabama @ Oklahoma        Oklahoma (1.5)  DraftKings       52.3%
+
+==================================================
+📉 TOP TOTALS EDGES (Over/Under)
+==================================================
+                            Game Total Pick Total Book Total Conf
+          James Madison @ Oregon UNDER 47.5 DraftKings      63.3%
+                   LSU @ Houston  OVER 41.5 DraftKings      59.8%
+            Louisiana @ Delaware  OVER 61.5 DraftKings      59.6%
+             Toledo @ Louisville UNDER 45.5 DraftKings      57.8%
+                   Arizona @ SMU UNDER 51.5 DraftKings      57.4%
+       Troy @ Jacksonville State  OVER 48.5 DraftKings      57.1%
+       Miami (OH) @ Fresno State  OVER 42.5 DraftKings      55.7%
+ Central Michigan @ Northwestern  OVER 43.5 DraftKings      55.6%
+            California @ Hawai'i UNDER 54.5 DraftKings      55.5%
+   Washington State @ Utah State UNDER 50.5 DraftKings      55.5%
+               Miami @ Texas A&M UNDER 50.5 DraftKings      55.1%
+            Tennessee @ Illinois UNDER 61.5 DraftKings      54.9%
+      Pittsburgh @ East Carolina  OVER 57.5 DraftKings      54.3%
+              Memphis @ NC State  OVER 58.5 DraftKings      53.8%
+            Penn State @ Clemson UNDER 48.5 DraftKings      53.7%
+   North Texas @ San Diego State  OVER 54.5 DraftKings      53.6%
+            Arizona State @ Duke  OVER 49.5 DraftKings      53.5%
+Western Kentucky @ Southern Miss UNDER 57.5 DraftKings      53.4%
+               Tulane @ Ole Miss UNDER 56.5 DraftKings      53.4%
+              Alabama @ Oklahoma UNDER 40.5 DraftKings      52.8%
