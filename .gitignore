@@ -8,7 +8,7 @@ __pycache__/
 
 # Optional: Ignore the large data files if you want to keep the repo clean
 # (Remove these lines if you WANT to back up your data csvs)
-*.csv
+#*.csv
 *.pkl
 
 # Ignore system files
