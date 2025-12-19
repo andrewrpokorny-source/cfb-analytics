@@ -1,18 +1,18 @@
 GameID,HomeTeam,AwayTeam,Game,Spread Pick,Spread Book,Spread Conf,Spread_Conf_Raw,Pick_Team,Pick_Line,Total Pick,Total Book,Total Conf,Total_Conf_Raw,Pick_Side,Pick_Total,Manual_Date,Manual_HomeScore,Manual_AwayScore
-999001.0,Jax State,Kennesaw St,Kennesaw St @ Jax State,Kennesaw St (+2.5),Backfill,58.0%,0.58,Kennesaw St,2.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-05,15.0,19.0
+999001.0,Jacksonville State,Kennesaw State,Kennesaw State @ Jacksonville State,Kennesaw St (+2.5),Backfill,58.0%,0.58,Kennesaw St,2.5,OVER 55.5,Backfill,51.7%,0.5171111653361335,OVER,55.5,2025-12-05,15.0,19.0
 999002.0,JMU,Troy,Troy @ JMU,JMU (-23.5),Backfill,52.0%,0.52,JMU,-23.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-05,31.0,14.0
-999003.0,Boise State,UNLV,UNLV @ Boise State,Boise State (-5.5),Backfill,65.0%,0.65,Boise State,-5.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-05,56.0,31.0
-999004.0,W. Michigan,Miami (OH),Miami (OH) @ W. Michigan,W. Michigan (-2.5),Backfill,55.0%,0.55,W. Michigan,-2.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-06,23.0,13.0
-999005.0,Texas Tech,BYU,BYU @ Texas Tech,Texas Tech (-12.5),Backfill,61.0%,0.61,Texas Tech,-12.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-06,34.0,7.0
-999006.0,Alabama,Georgia,Georgia @ Alabama,Georgia (-1.5),Backfill,59.0%,0.59,Georgia,-1.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-06,7.0,28.0
-999007.0,Virginia,Duke,Duke @ Virginia,Virginia (-4.0),Backfill,53.0%,0.53,Virginia,-4.0,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-06,20.0,27.0
-999008.0,Ohio State,Indiana,Indiana @ Ohio State,Ohio State (-4.0),Backfill,62.0%,0.62,Ohio State,-4.0,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-06,10.0,13.0
-999009.0,Boise State,Washington,Washington @ Boise State,Washington (-8.5),Backfill,57.0%,0.57,Washington,-8.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-13,10.0,38.0
-999010.0,Prairie View,SC State,SC State @ Prairie View,SC State (-6.5),Backfill,51.0%,0.51,SC State,-6.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-13,38.0,40.0
-999011.0,Troy,Jax State,Jax State @ Troy,Troy (-3.0),Backfill,54.0%,0.54,Troy,-3.0,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-16,13.0,17.0
+999003.0,Boise State,UNLV,UNLV @ Boise State,Boise State (-5.5),Backfill,65.0%,0.65,Boise State,-5.5,UNDER 55.5,Backfill,51.3%,0.5126314551125807,UNDER,55.5,2025-12-05,56.0,31.0
+999004.0,Western Michigan,Miami (OH),Miami (OH) @ Western Michigan,W. Michigan (-2.5),Backfill,55.0%,0.55,W. Michigan,-2.5,OVER 55.5,Backfill,50.1%,0.5009465197412586,OVER,55.5,2025-12-06,23.0,13.0
+999005.0,Texas Tech,BYU,BYU @ Texas Tech,Texas Tech (-12.5),Backfill,61.0%,0.61,Texas Tech,-12.5,UNDER 55.5,Backfill,50.8%,0.5077926874245947,UNDER,55.5,2025-12-06,34.0,7.0
+999006.0,Alabama,Georgia,Georgia @ Alabama,Georgia (-1.5),Backfill,59.0%,0.59,Georgia,-1.5,UNDER 55.5,Backfill,59.2%,0.5924917909802085,UNDER,55.5,2025-12-06,7.0,28.0
+999007.0,Virginia,Duke,Duke @ Virginia,Virginia (-4.0),Backfill,53.0%,0.53,Virginia,-4.0,OVER 55.5,Backfill,51.3%,0.5128826302329191,OVER,55.5,2025-12-06,20.0,27.0
+999008.0,Ohio State,Indiana,Indiana @ Ohio State,Ohio State (-4.0),Backfill,62.0%,0.62,Ohio State,-4.0,UNDER 55.5,Backfill,56.8%,0.5675697504273349,UNDER,55.5,2025-12-06,10.0,13.0
+999009.0,Boise State,Washington,Washington @ Boise State,Washington (-8.5),Backfill,57.0%,0.57,Washington,-8.5,UNDER 55.5,Backfill,52.9%,0.5291839166447218,UNDER,55.5,2025-12-13,10.0,38.0
+999010.0,Prairie View,South Carolina State,South Carolina State @ Prairie View,SC State (-6.5),Backfill,51.0%,0.51,SC State,-6.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-13,38.0,40.0
+999011.0,Troy,Jacksonville State,Jacksonville State @ Troy,Troy (-3.0),Backfill,54.0%,0.54,Troy,-3.0,OVER 55.5,Backfill,51.8%,0.5178621375409033,OVER,55.5,2025-12-16,13.0,17.0
 999012.0,USF,Old Dominion,Old Dominion @ USF,USF (-3.0),Backfill,60.0%,0.6,USF,-3.0,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-17,10.0,24.0
-999013.0,Louisiana,Delaware,Delaware @ Louisiana,Delaware (+2.5),Backfill,56.0%,0.56,Delaware,2.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-17,13.0,20.0
-999014.0,Arkansas St,Missouri St,Missouri St @ Arkansas St,Arkansas St (-2.5),Backfill,58.0%,0.58,Arkansas St,-2.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-18,34.0,28.0
+999013.0,Louisiana,Delaware,Delaware @ Louisiana,Delaware (+2.5),Backfill,56.0%,0.56,Delaware,2.5,OVER 55.5,Backfill,55.8%,0.5581098180794053,OVER,55.5,2025-12-17,13.0,20.0
+999014.0,Arkansas State,Missouri State,Missouri State @ Arkansas State,Arkansas St (-2.5),Backfill,58.0%,0.58,Arkansas St,-2.5,OVER 55.5,Backfill,51.5%,0.5149330704418456,OVER,55.5,2025-12-18,34.0,28.0
 401778306.0,Western Michigan,Kennesaw State,Kennesaw State @ Western Michigan,Western Michigan (-3.5),DraftKings,51.4%,0.5138373674451969,Western Michigan,-3.5,UNDER 47.5,DraftKings,50.2%,0.5021089322171053,UNDER,47.5,,,
 401778307.0,NC State,Memphis,Memphis @ NC State,Memphis (+3.5),DraftKings,50.6%,0.5064288727228887,Memphis,-3.5,OVER 56.5,DraftKings,55.0%,0.5501571586747324,OVER,56.5,,,
 401779840.0,Oklahoma,Alabama,Alabama @ Oklahoma,Oklahoma (-1.5),DraftKings,51.4%,0.5143429541129546,Oklahoma,-1.5,UNDER 40.5,DraftKings,53.3%,0.5325826522577413,UNDER,40.5,,,
