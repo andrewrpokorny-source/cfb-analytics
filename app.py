@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
+from datetime import datetime
+import pytz
 
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
@@ -11,24 +13,19 @@ def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
-        # Fetching ALL Postseason games
         res = requests.get("https://api.collegefootballdata.com/games", 
                            headers=headers, 
                            params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
-            # Force ID to int for safety
             return {int(g['id']): g for g in res.json()}
-        else:
-            st.error(f"API Error: {res.status_code}")
     except Exception as e:
-        st.error(f"API Connection Failed: {e}")
+        st.error(f"Connection Error: {e}")
     return {}
 
-@st.cache_data(ttl=0) # ttl=0 forces it to reload CSV on every refresh
+@st.cache_data(ttl=0)
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # Clean up GameID to ensure it matches API (Force to Int)
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(int)
@@ -39,21 +36,19 @@ def load_picks():
 df = load_picks()
 scores = fetch_scores()
 
-# --- 2. GRADING LOGIC ---
+# --- 2. PROCESSING LOOP ---
 graded_results = []
 upcoming_games = []
 
 if not df.empty:
     for _, row in df.iterrows():
-        gid = int(row.get("GameID")) # Strict Int conversion
+        gid = int(row.get("GameID"))
         game = scores.get(gid)
         
-        # Check if game exists in API and is completed
+        # A. COMPLETED GAMES (For History Tab)
         if game and game.get('status') == 'completed':
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
-            if home_score is None: home_score = 0
-            if away_score is None: away_score = 0
             
             # Grade Spread
             pick_team = row['Pick_Team']
@@ -86,15 +81,37 @@ if not df.empty:
                 "Total Result": total_res
             })
         
+        # B. UPCOMING GAMES (For Board Tab)
         else:
-            # If not completed, it goes to Board
-            upcoming_games.append(row)
+            # We copy the row so we can modify it without breaking the original DF
+            new_row = row.copy()
+            
+            # Inject Kickoff Time for sorting
+            if game:
+                start_str = game.get('start_date') # ISO Format: 2025-12-20T19:30:00.000Z
+                new_row['Kickoff_Raw'] = start_str
+                
+                # Format for display (Optional: Convert to ET if you want, currently keeping simple)
+                try:
+                    dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                    # Convert to ET
+                    et_tz = pytz.timezone('US/Eastern')
+                    dt_et = dt.astimezone(et_tz)
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p') # "Sat 07:30 PM"
+                except:
+                    new_row['Time'] = "TBD"
+            else:
+                new_row['Kickoff_Raw'] = "2099-12-31" # Push unknowns to bottom
+                new_row['Time'] = "Unknown"
+                
+            upcoming_games.append(new_row)
 
 # --- 3. TABS UI ---
 tab1, tab2 = st.tabs(["🔮 Betting Board", "📜 Performance History"])
 
 with tab1:
-    st.markdown("### Active & Upcoming Games")
+    st.markdown("### 📅 Schedule & Picks")
+    
     def color_confidence(val):
         try:
             score = float(val.strip('%'))
@@ -106,21 +123,24 @@ with tab1:
 
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
-        # Sort by confidence if available
-        if "Spread_Conf_Raw" in up_df.columns:
-            up_df = up_df.sort_values("Spread_Conf_Raw", ascending=False)
-            
+        
+        # SORTING MAGIC: Sort by Time first, then by Confidence
+        if 'Kickoff_Raw' in up_df.columns:
+            up_df['Kickoff_Raw'] = pd.to_datetime(up_df['Kickoff_Raw'])
+            up_df = up_df.sort_values(by=['Kickoff_Raw', 'Spread_Conf_Raw'], ascending=[True, False])
+
         col1, col2 = st.columns(2)
         with col1:
-            st.caption("Spread Edges")
+            st.caption("Spread Picks (Sorted by Kickoff)")
+            # Added 'Time' column to view
             st.dataframe(
-                up_df[['Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']),
+                up_df[['Time', 'Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']),
                 use_container_width=True, hide_index=True
             )
         with col2:
-            st.caption("Totals Edges")
+            st.caption("Totals Picks (Sorted by Kickoff)")
             st.dataframe(
-                up_df[['Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
+                up_df[['Time', 'Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
                 use_container_width=True, hide_index=True
             )
     else:
@@ -129,6 +149,8 @@ with tab1:
 with tab2:
     if graded_results:
         res_df = pd.DataFrame(graded_results)
+        # Sort history by Date (Newest first)
+        res_df = res_df.sort_values(by='Date', ascending=False)
         
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
@@ -162,16 +184,6 @@ with tab2:
     else:
         st.warning("No completed games found to grade.")
 
-# --- 4. DEBUG FOOTER (Use this to solve the mystery) ---
-with st.expander("⚙️ System Status (Click if data is missing)"):
-    st.write(f"**CSV Rows Loaded:** {len(df)}")
-    st.write(f"**API Games Fetched:** {len(scores)}")
-    
-    if not df.empty:
-        sample_id = df.iloc[0]['GameID']
-        st.write(f"**Sample ID from CSV:** {sample_id} (Type: {type(sample_id)})")
-        if scores:
-            match = scores.get(int(sample_id))
-            st.write(f"**API Match for {sample_id}:** {'✅ Found' if match else '❌ Not Found'}")
-            if match:
-                st.write(f"**Game Status:** {match.get('status')}")
+# Footer
+with st.expander("⚙️ System Status"):
+    st.write(f"Loaded {len(df)} picks and {len(scores)} API games.")
