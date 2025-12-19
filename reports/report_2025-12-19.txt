@@ -10,7 +10,7 @@ Fetching Data for 2025 Bowl Season...
 ==================================================
                              Game           Spread Pick Spread Conf
                 Iowa @ Vanderbilt     Vanderbilt (-5.5)       61.3%
-                Miami @ Texas A&M          Miami (+3.5)       57.2%
+                Miami @ Texas A&M            Miami (+3)       57.2%
                     LSU @ Houston              LSU (+3)       56.5%
                      UConn @ Army           UConn (+10)       56.0%
               Virginia @ Missouri         Missouri (-4)       55.9%
