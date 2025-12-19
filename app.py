@@ -24,9 +24,9 @@ def fetch_scores():
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # Clean IDs
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
+            # Clean IDs
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         return df
     except:
@@ -40,34 +40,45 @@ graded_results = []
 upcoming_games = []
 
 if not df.empty:
+    # Check if manual columns exist in the CSV (Handle case where they don't)
+    has_manual_scores = 'Manual_HomeScore' in df.columns
+    
     for _, row in df.iterrows():
         gid = str(row.get("GameID"))
         game = scores.get(gid)
         
-        # --- HYBRID SCORE LOOKUP ---
-        # 1. Try API first
+        is_completed = False
+        home_score = 0
+        away_score = 0
+        date_str = "N/A"
+
+        # --- ROUTING LOGIC ---
+        
+        # PATH A: API says game is done
         if game and game.get('status') == 'completed':
+            is_completed = True
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
+            
+        # PATH B: Manual Backfill (The fix for your issue)
+        # We check if the column exists AND the value is not empty (NaN)
+        elif has_manual_scores and pd.notnull(row['Manual_HomeScore']):
             is_completed = True
-        
-        # 2. Try Manual Backfill (from CSV columns)
-        elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
-            home_score = int(row['Manual_HomeScore'])
-            away_score = int(row['Manual_AwayScore'])
-            date_str = str(row['Manual_Date'])
-            is_completed = True
-        
-        else:
-            is_completed = False
+            try:
+                home_score = int(float(row['Manual_HomeScore'])) # Handle 24.0 -> 24
+                away_score = int(float(row['Manual_AwayScore']))
+                date_str = str(row['Manual_Date'])
+            except:
+                is_completed = False # Fallback if data is corrupt
 
-        # --- GRADING LOGIC ---
+        # --- GRADING ---
         if is_completed:
             pick_team = row['Pick_Team']
             try: raw_home_spread = float(row['Pick_Line'])
             except: raw_home_spread = 0.0
             
+            # Spread Logic
             if pick_team == row['HomeTeam']:
                 margin = (home_score - away_score) + raw_home_spread
             else:
@@ -77,17 +88,18 @@ if not df.empty:
             elif margin > 0: spread_res = "WIN"
             else: spread_res = "LOSS"
 
-            # Total Logic (Skip for manual backfill if missing)
+            # Total Logic
+            # Only grade total if we have data for it (Manual backfill might lack total outcome)
             total_res = "N/A"
-            if 'Manual_HomeScore' not in row or pd.isnull(row['Manual_HomeScore']):
-                total_score = home_score + away_score
-                pick_side = row['Pick_Side'] 
-                try: pick_total = float(row['Pick_Total'])
-                except: pick_total = 0.0
-                
-                if total_score == pick_total: total_res = "PUSH"
-                elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
-                else: total_res = "WIN" if total_score < pick_total else "LOSS"
+            # If we have score data, we can try to grade total
+            pick_side = row['Pick_Side'] 
+            try: pick_total = float(row['Pick_Total'])
+            except: pick_total = 0.0
+            
+            total_score = home_score + away_score
+            if total_score == pick_total: total_res = "PUSH"
+            elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
+            else: total_res = "WIN" if total_score < pick_total else "LOSS"
 
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
@@ -113,8 +125,11 @@ if not df.empty:
                 except:
                     new_row['Time'] = "Date Error"
             else:
+                # If it's a manual game that failed logic, it ends up here.
+                # But it won't have a date.
                 new_row['Kickoff_Sort'] = "2099-12-31"
                 new_row['Time'] = "TBD"
+                
             upcoming_games.append(new_row)
 
 # --- 3. UI ---
@@ -150,15 +165,22 @@ with tab2:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
+        # Stats
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         s_total = s_wins + s_loss
         s_pct = (s_wins / s_total * 100) if s_total > 0 else 0.0
+        
+        t_wins = len(res_df[res_df['Total Result'] == 'WIN'])
+        t_loss = len(res_df[res_df['Total Result'] == 'LOSS'])
+        t_total = t_wins + t_loss
+        t_pct = (t_wins / t_total * 100) if t_total > 0 else 0.0
 
         st.markdown("### 📊 ROI Tracker")
-        m1, m2 = st.columns(2)
-        m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}% Win Rate")
-        m2.metric("Total Graded Games", len(res_df))
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}%")
+        m2.metric("Total Record", f"{t_wins}-{t_loss}", f"{t_pct:.1f}%")
+        m3.metric("Graded Games", len(res_df))
         
         st.divider()
         def color_history(val):
@@ -166,6 +188,6 @@ with tab2:
             if val == "LOSS": return 'color: red; font-weight: bold'
             return 'color: gray'
 
-        st.dataframe(res_df.style.map(color_history, subset=['Spread Result']), hide_index=True, use_container_width=True)
+        st.dataframe(res_df.style.map(color_history, subset=['Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
     else:
         st.warning("No completed games found.")
