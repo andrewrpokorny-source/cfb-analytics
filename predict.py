@@ -8,7 +8,11 @@ load_dotenv()
 API_KEY = os.getenv("CFBD_API_KEY")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
 
-VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
+# EXPANDED BOOKS LIST (Based on your Audit)
+VALID_BOOKS = [
+    'DraftKings', 'Draft Kings', 'FanDuel', 'BetMGM', 'Caesars', 
+    'PointsBet', 'BetRivers', 'Unibet', 'Bovada'
+]
 HISTORY_FILE = "live_predictions.csv"
 
 def get_data(endpoint, params):
@@ -44,7 +48,7 @@ def build_decay_lookup(year):
     return lookup
 
 def main():
-    print("--- 🏈 CFB PREDICTOR (PRECISION SPREAD LOGIC) 🏈 ---")
+    print("--- 🏈 CFB PREDICTOR (FINAL PRODUCTION BUILD) 🏈 ---")
     YEAR = 2025; SEASON_TYPE = "postseason"; WEEK = 1
     
     try:
@@ -52,7 +56,7 @@ def main():
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
     except: 
-        print("Models not found.")
+        print("Models not found. Please run training script first.")
         return
 
     print(f"Fetching Data for {YEAR} Bowl Season...")
@@ -67,15 +71,17 @@ def main():
 
     shopping_cart = {}
     for g in lines_data:
+        # Check against our expanded VALID_BOOKS list
         valid_lines = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
         shopping_cart[g['id']] = valid_lines
 
     current_week_preds = []
     games = pd.DataFrame(games_data).rename(columns={'homeTeam': 'home_team', 'awayTeam': 'away_team'}).to_dict('records')
 
-    print(f"   -> Shopping across {len(VALID_BOOKS)} legitimate books...")
+    print(f"   -> Shopping across {len(VALID_BOOKS)} providers...")
 
     for g in games:
+        # Skip completed games (Backfill script handles the past)
         if g.get('completed'): continue
         gid = g.get('id')
         home, away = g.get('home_team'), g.get('away_team')
@@ -119,21 +125,20 @@ def main():
                     
                     if cover_prob > 0.5:
                         pick_team = home
-                        # If I pick Home, I keep the API spread (e.g. -3.5)
                         my_line = home_spread_val 
                     else:
                         pick_team = away
-                        # If I pick Away, I FLIP the API spread (e.g. -3.5 becomes +3.5)
+                        # Flip spread for display (e.g. -3.5 becomes +3.5)
                         my_line = -1 * home_spread_val
 
-                    # Formatting: Add '+' if positive (e.g., "+3.5")
+                    # Formatting: Add '+' if positive
                     fmt_line = f"+{my_line}" if my_line > 0 else f"{my_line}"
                     
                     best_spread = {
                         "conf": s_conf,
                         "book": book,
                         "pick": f"{pick_team} ({fmt_line})",
-                        "raw_spread": home_spread_val, # SAVE THE RAW HOME SPREAD for grading
+                        "raw_spread": home_spread_val, # SAVE RAW HOME SPREAD for grading
                         "pick_team": pick_team
                     }
 
@@ -163,12 +168,16 @@ def main():
                 "HomeTeam": home,
                 "AwayTeam": away,
                 "Game": f"{away} @ {home}",
+                
+                # Spread
                 "Spread Pick": best_spread['pick'],
                 "Spread Book": best_spread['book'],
                 "Spread Conf": f"{best_spread['conf']:.1%}",
                 "Spread_Conf_Raw": best_spread['conf'],
                 "Pick_Team": best_spread['pick_team'],
-                "Pick_Line": best_spread['raw_spread'], # SAVING RAW HOME SPREAD
+                "Pick_Line": best_spread['raw_spread'], # Raw Home Spread
+                
+                # Total
                 "Total Pick": best_total['pick'],
                 "Total Book": best_total['book'],
                 "Total Conf": f"{best_total['conf']:.1%}",
@@ -184,7 +193,9 @@ def main():
         if os.path.exists(HISTORY_FILE):
             try:
                 history_df = pd.read_csv(HISTORY_FILE)
+                # Combine: New predictions + Old history
                 combined_df = pd.concat([new_df, history_df], ignore_index=True)
+                # Deduplicate: Keep the NEWEST prediction for any given GameID
                 combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
             except:
                 combined_df = new_df
@@ -195,9 +206,9 @@ def main():
         print(f"\n✅ Database Updated: {len(combined_df)} tracked games.")
         
         print("\n" + "="*50)
-        print("🎯 TOP SPREAD EDGES (Corrected Display)")
+        print("🎯 TOP SPREAD EDGES (Live w/ Expanded Books)")
         print("="*50)
-        print(new_df.sort_values("Spread_Conf_Raw", ascending=False)[['Game', 'Spread Pick', 'Spread Conf']].head(10).to_string(index=False))
+        print(new_df.sort_values("Spread_Conf_Raw", ascending=False)[['Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].head(10).to_string(index=False))
     else:
         print("No new games found.")
 

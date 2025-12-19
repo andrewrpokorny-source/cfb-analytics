@@ -11,22 +11,20 @@ def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
-        # Fetch ALL Postseason games
         res = requests.get("https://api.collegefootballdata.com/games", 
                            headers=headers, 
                            params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
-            # Force Key to String for reliable matching
             return {str(g['id']): g for g in res.json()}
-    except Exception as e:
-        st.error(f"API Connection Error: {e}")
+    except:
+        pass
     return {}
 
 @st.cache_data(ttl=0)
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # Clean IDs: Force to string, remove decimal suffixes like ".0"
+        # Clean IDs
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -46,12 +44,26 @@ if not df.empty:
         gid = str(row.get("GameID"))
         game = scores.get(gid)
         
-        # A. COMPLETED GAMES (History)
+        # --- HYBRID SCORE LOOKUP ---
+        # 1. Try API first
         if game and game.get('status') == 'completed':
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
-            
-            # Grade Spread
+            date_str = game.get('start_date', 'N/A')[:10]
+            is_completed = True
+        
+        # 2. Try Manual Backfill (from CSV columns)
+        elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
+            home_score = int(row['Manual_HomeScore'])
+            away_score = int(row['Manual_AwayScore'])
+            date_str = str(row['Manual_Date'])
+            is_completed = True
+        
+        else:
+            is_completed = False
+
+        # --- GRADING LOGIC ---
+        if is_completed:
             pick_team = row['Pick_Team']
             try: raw_home_spread = float(row['Pick_Line'])
             except: raw_home_spread = 0.0
@@ -65,65 +77,51 @@ if not df.empty:
             elif margin > 0: spread_res = "WIN"
             else: spread_res = "LOSS"
 
-            # Grade Total
-            total_score = home_score + away_score
-            pick_side = row['Pick_Side'] 
-            try: pick_total = float(row['Pick_Total'])
-            except: pick_total = 0.0
-            
-            if total_score == pick_total: total_res = "PUSH"
-            elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
-            else: total_res = "WIN" if total_score < pick_total else "LOSS"
+            # Total Logic (Skip for manual backfill if missing)
+            total_res = "N/A"
+            if 'Manual_HomeScore' not in row or pd.isnull(row['Manual_HomeScore']):
+                total_score = home_score + away_score
+                pick_side = row['Pick_Side'] 
+                try: pick_total = float(row['Pick_Total'])
+                except: pick_total = 0.0
+                
+                if total_score == pick_total: total_res = "PUSH"
+                elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
+                else: total_res = "WIN" if total_score < pick_total else "LOSS"
 
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
-                "Date": game.get('start_date', 'N/A')[:10],
+                "Date": date_str,
                 "Spread Bet": f"{row['Spread Pick']}",
                 "Spread Result": spread_res,
                 "Total Bet": f"{row['Total Pick']}",
                 "Total Result": total_res
             })
         
-        # B. UPCOMING GAMES (Board)
+        # --- UPCOMING ---
         else:
             new_row = row.copy()
-            
-            # --- ROBUST DATE PARSING ---
-            # Try both snake_case (standard) and camelCase (rare API variance)
-            start_str = None
-            if game:
-                start_str = game.get('start_date') or game.get('startDate')
+            start_str = game.get('start_date') if game else None
             
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
                 try:
-                    # 1. Convert string to Datetime Object
                     dt = pd.to_datetime(start_str)
-                    
-                    # 2. Handle Timezones (API is usually UTC)
-                    if dt.tzinfo is None:
-                        dt = dt.tz_localize('UTC')
-                    
-                    # 3. Convert to Eastern Time
+                    if dt.tzinfo is None: dt = dt.tz_localize('UTC')
                     dt_et = dt.tz_convert('US/Eastern')
-                    
-                    # 4. Format nicely
-                    new_row['Time'] = dt_et.strftime('%a %I:%M %p') # e.g., "Sat 12:00 PM"
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p')
                 except:
-                    # If parsing fails, just show the raw string truncated
-                    new_row['Time'] = str(start_str)[:16]
+                    new_row['Time'] = "Date Error"
             else:
                 new_row['Kickoff_Sort'] = "2099-12-31"
-                new_row['Time'] = "Date Missing" # Changed from TBD to diagnose
-                
+                new_row['Time'] = "TBD"
             upcoming_games.append(new_row)
 
-# --- 3. DISPLAY UI ---
+# --- 3. UI ---
 tab1, tab2 = st.tabs(["🔮 Betting Board", "📜 Performance History"])
 
 with tab1:
     st.markdown("### 📅 Active & Upcoming Games")
-    
     def color_confidence(val):
         try: score = float(val.strip('%'))
         except: return ''
@@ -134,24 +132,16 @@ with tab1:
 
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
-        
-        # Sort by Date first, then Confidence
         if 'Kickoff_Sort' in up_df.columns:
             up_df = up_df.sort_values(by=['Kickoff_Sort', 'Spread_Conf_Raw'], ascending=[True, False])
 
         col1, col2 = st.columns(2)
         with col1:
-            st.caption("Spread Picks (Sorted by Time)")
-            st.dataframe(
-                up_df[['Time', 'Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']),
-                use_container_width=True, hide_index=True
-            )
+            st.caption("Spread Picks")
+            st.dataframe(up_df[['Time', 'Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']), hide_index=True, use_container_width=True)
         with col2:
             st.caption("Totals Picks")
-            st.dataframe(
-                up_df[['Time', 'Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
-                use_container_width=True, hide_index=True
-            )
+            st.dataframe(up_df[['Time', 'Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']), hide_index=True, use_container_width=True)
     else:
         st.info("No upcoming games found.")
 
@@ -162,21 +152,13 @@ with tab2:
         
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
-        s_push = len(res_df[res_df['Spread Result'] == 'PUSH'])
         s_total = s_wins + s_loss
         s_pct = (s_wins / s_total * 100) if s_total > 0 else 0.0
 
-        t_wins = len(res_df[res_df['Total Result'] == 'WIN'])
-        t_loss = len(res_df[res_df['Total Result'] == 'LOSS'])
-        t_push = len(res_df[res_df['Total Result'] == 'PUSH'])
-        t_total = t_wins + t_loss
-        t_pct = (t_wins / t_total * 100) if t_total > 0 else 0.0
-
         st.markdown("### 📊 ROI Tracker")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Spread Record", f"{s_wins}-{s_loss}-{s_push}", f"{s_pct:.1f}%")
-        m2.metric("Total Record", f"{t_wins}-{t_loss}-{t_push}", f"{t_pct:.1f}%")
-        m3.metric("Graded Games", len(res_df))
+        m1, m2 = st.columns(2)
+        m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}% Win Rate")
+        m2.metric("Total Graded Games", len(res_df))
         
         st.divider()
         def color_history(val):
@@ -184,27 +166,6 @@ with tab2:
             if val == "LOSS": return 'color: red; font-weight: bold'
             return 'color: gray'
 
-        st.dataframe(
-            res_df.style.map(color_history, subset=['Spread Result', 'Total Result']),
-            use_container_width=True, hide_index=True
-        )
+        st.dataframe(res_df.style.map(color_history, subset=['Spread Result']), hide_index=True, use_container_width=True)
     else:
-        st.warning("No completed games found to grade.")
-
-# --- DEBUG FOOTER ---
-with st.expander("⚙️ System Status (Deep Debug)"):
-    st.write(f"**API Games Fetched:** {len(scores)}")
-    st.write(f"**CSV Picks Loaded:** {len(df)}")
-    
-    if not df.empty and len(scores) > 0:
-        sample_id = str(df.iloc[0]['GameID'])
-        match = scores.get(sample_id)
-        
-        st.write(f"**Sample ID:** `{sample_id}`")
-        if match:
-            st.success("✅ Game Object Found")
-            # Show the raw date field to verify the key name
-            st.write(f"**Raw Date Value:** `{match.get('start_date')}`")
-            st.write(f"**All Keys Available:** {list(match.keys())[:5]}...") 
-        else:
-            st.error("❌ Match Failed for sample row.")
+        st.warning("No completed games found.")
