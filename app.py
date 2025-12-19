@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
@@ -12,19 +11,21 @@ def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
+        # Fetch ALL Postseason games
         res = requests.get("https://api.collegefootballdata.com/games", 
                            headers=headers, 
                            params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
             return {int(g['id']): g for g in res.json()}
     except Exception as e:
-        st.error(f"Connection Error: {e}")
+        st.error(f"API Connection Error: {e}")
     return {}
 
 @st.cache_data(ttl=0)
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
+        # Ensure GameID is integer for matching
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(int)
@@ -44,17 +45,15 @@ if not df.empty:
         gid = int(row.get("GameID"))
         game = scores.get(gid)
         
-        # A. COMPLETED GAMES
+        # A. COMPLETED GAMES (History)
         if game and game.get('status') == 'completed':
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             
             # Grade Spread
             pick_team = row['Pick_Team']
-            try:
-                raw_home_spread = float(row['Pick_Line'])
-            except:
-                raw_home_spread = 0.0
+            try: raw_home_spread = float(row['Pick_Line'])
+            except: raw_home_spread = 0.0
             
             if pick_team == row['HomeTeam']:
                 margin = (home_score - away_score) + raw_home_spread
@@ -68,10 +67,8 @@ if not df.empty:
             # Grade Total
             total_score = home_score + away_score
             pick_side = row['Pick_Side'] 
-            try:
-                pick_total = float(row['Pick_Total'])
-            except:
-                pick_total = 0.0
+            try: pick_total = float(row['Pick_Total'])
+            except: pick_total = 0.0
             
             if total_score == pick_total: total_res = "PUSH"
             elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
@@ -86,43 +83,36 @@ if not df.empty:
                 "Total Result": total_res
             })
         
-        # B. UPCOMING GAMES
+        # B. UPCOMING GAMES (Board)
         else:
             new_row = row.copy()
-            
-            # --- DATE PARSING LOGIC ---
-            start_str = None
-            if game:
-                start_str = game.get('start_date') # ISO: 2025-12-20T19:30:00.000Z
+            start_str = game.get('start_date') if game else None
             
             if start_str:
-                new_row['Kickoff_Sort'] = start_str # Keep ISO for sorting
+                new_row['Kickoff_Sort'] = start_str
                 try:
-                    # Parse ISO (Standard Python 3.7+ handles 'Z' usually, but replace is safer)
-                    dt_utc = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-                    
-                    # Convert to ET (UTC - 5 hours) manually to avoid pytz dependency
-                    dt_et = dt_utc - timedelta(hours=5)
-                    
-                    # Format nicely: "Sat 2:30 PM"
-                    new_row['Time'] = dt_et.strftime('%a %I:%M %p')
-                except Exception as e:
-                    new_row['Time'] = "Time Error"
+                    # Bulletproof Parsing with Pandas
+                    dt = pd.to_datetime(start_str)
+                    # Convert to Eastern Time (UTC-5)
+                    dt_et = dt.tz_convert('US/Eastern')
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p') # "Fri 08:00 PM"
+                except:
+                    # Fallback if timezone conversion fails
+                    new_row['Time'] = dt.strftime('%a %I:%M %p')
             else:
-                new_row['Kickoff_Sort'] = "2099-12-31" # Force to bottom
-                new_row['Time'] = "TBD"
+                new_row['Kickoff_Sort'] = "2099-12-31"
+                new_row['Time'] = "Time TBD"
                 
             upcoming_games.append(new_row)
 
-# --- 3. TABS UI ---
+# --- 3. DISPLAY UI ---
 tab1, tab2 = st.tabs(["🔮 Betting Board", "📜 Performance History"])
 
 with tab1:
-    st.markdown("### 📅 Schedule & Picks")
+    st.markdown("### 📅 Active & Upcoming Games")
     
     def color_confidence(val):
-        try:
-            score = float(val.strip('%'))
+        try: score = float(val.strip('%'))
         except: return ''
         if score >= 60.0: return 'background-color: #2e7d32; color: white'
         elif score >= 55.0: return 'background-color: #4caf50; color: black'
@@ -132,19 +122,19 @@ with tab1:
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
         
-        # SORTING: Kickoff Time (Ascending) -> Confidence (Descending)
+        # Sort: Earliest Kickoff First
         if 'Kickoff_Sort' in up_df.columns:
             up_df = up_df.sort_values(by=['Kickoff_Sort', 'Spread_Conf_Raw'], ascending=[True, False])
 
         col1, col2 = st.columns(2)
         with col1:
-            st.caption("Spread Picks (Chronological)")
+            st.caption("Spread Picks (Sorted by Time)")
             st.dataframe(
                 up_df[['Time', 'Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']),
                 use_container_width=True, hide_index=True
             )
         with col2:
-            st.caption("Totals Picks (Chronological)")
+            st.caption("Totals Picks")
             st.dataframe(
                 up_df[['Time', 'Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
                 use_container_width=True, hide_index=True
@@ -157,6 +147,7 @@ with tab2:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
+        # Calculate Records
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         s_push = len(res_df[res_df['Spread Result'] == 'PUSH'])
@@ -176,7 +167,8 @@ with tab2:
         m3.metric("Graded Games", len(res_df))
         
         st.divider()
-        st.markdown("### 📜 Game Log")
+        
+        # Color Logic for Win/Loss
         def color_history(val):
             if val == "WIN": return 'color: green; font-weight: bold'
             if val == "LOSS": return 'color: red; font-weight: bold'
@@ -189,8 +181,9 @@ with tab2:
     else:
         st.warning("No completed games found to grade.")
 
-# Debug Footer
+# --- DEBUG FOOTER ---
 with st.expander("⚙️ System Status"):
-    st.write(f"Loaded {len(df)} picks and {len(scores)} API games.")
-    if upcoming_games:
-        st.write(f"Sample Time Data: {upcoming_games[0].get('Kickoff_Sort')}")
+    st.write(f"**API Games Fetched:** {len(scores)}")
+    if len(scores) == 0:
+        st.error("⚠️ API returned 0 games. Check your API Key in Settings > Secrets.")
+    st.write(f"**CSV Picks Loaded:** {len(df)}")
