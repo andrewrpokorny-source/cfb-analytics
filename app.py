@@ -11,11 +11,9 @@ def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
-        
-        # CHANGED: Removed 'week=1'. Now fetches ALL Postseason games.
         res = requests.get("https://api.collegefootballdata.com/games", 
                            headers=headers, 
-                           params={"year": 2025, "seasonType": "postseason"}) 
+                           params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
             return {g['id']: g for g in res.json()}
     except:
@@ -44,19 +42,24 @@ if not df.empty and scores:
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             
-            # Grade Spread
+            # --- GRADE SPREAD ---
             pick_team = row['Pick_Team']
-            line = row['Pick_Line']
-            if pick_team == row['HomeTeam']:
-                margin = home_score - away_score
-            else:
-                margin = away_score - home_score
+            # We saved the RAW HOME SPREAD in 'Pick_Line'
+            raw_home_spread = row['Pick_Line'] 
             
-            if (margin + line) == 0: spread_res = "✋ PUSH"
-            elif (margin + line) > 0: spread_res = "✅ WIN"
+            if pick_team == row['HomeTeam']:
+                # Home Pick: (HomeScore - AwayScore) + HomeSpread > 0
+                margin = (home_score - away_score) + raw_home_spread
+            else:
+                # Away Pick: (AwayScore - HomeScore) - HomeSpread > 0
+                # Because AwaySpread = -HomeSpread
+                margin = (away_score - home_score) - raw_home_spread
+            
+            if margin == 0: spread_res = "✋ PUSH"
+            elif margin > 0: spread_res = "✅ WIN"
             else: spread_res = "❌ LOSS"
 
-            # Grade Total
+            # --- GRADE TOTAL ---
             total_score = home_score + away_score
             pick_side = row['Pick_Side'] 
             pick_total = row['Pick_Total']
@@ -74,8 +77,6 @@ if not df.empty and scores:
             })
 
 # --- 3. DISPLAY ---
-
-# A. Report Card
 if graded_results:
     st.markdown(f"### 📝 Graded Results ({len(graded_results)} Games)")
     results_df = pd.DataFrame(graded_results)
@@ -91,7 +92,6 @@ if graded_results:
     )
     st.divider()
 
-# B. Upcoming Board
 st.subheader("🔮 Upcoming Predictions")
 
 def color_confidence(val):
@@ -104,11 +104,6 @@ def color_confidence(val):
     return ''
 
 if not df.empty:
-    # Filter out completed games from the "Upcoming" view
-    # We do this by checking if the GameID is in the 'graded_results' list? 
-    # Simpler: Just rely on the user visually distinguishing them, or filter logic:
-    # (Optional: Filter df to exclude GIDs that are in scores and completed)
-    
     col1, col2 = st.columns(2)
     with col1:
         st.caption("Spread Edges")
@@ -122,5 +117,3 @@ if not df.empty:
             df[['Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
             use_container_width=True, hide_index=True
         )
-else:
-    st.info("No predictions found.")
