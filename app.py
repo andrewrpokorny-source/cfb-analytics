@@ -11,14 +11,33 @@ def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
-        res = requests.get("https://api.collegefootballdata.com/games", 
-                           headers=headers, 
-                           params={"year": 2025, "seasonType": "postseason"})
-        if res.status_code == 200:
-            return {str(g['id']): g for g in res.json()}
-    except:
-        pass
-    return {}
+        
+        # 1. Fetch Regular Season (The Safety Net)
+        res_reg = requests.get("https://api.collegefootballdata.com/games", 
+                               headers=headers, 
+                               params={"year": 2025, "seasonType": "regular"})
+        
+        # 2. Fetch Postseason (The Bowl Games)
+        res_post = requests.get("https://api.collegefootballdata.com/games", 
+                                headers=headers, 
+                                params={"year": 2025, "seasonType": "postseason"})
+        
+        games_dict = {}
+        
+        # Merge datasets (Regular first, then Postseason overwrites if duplicates exist)
+        if res_reg.status_code == 200:
+            for g in res_reg.json():
+                games_dict[str(g['id'])] = g
+                
+        if res_post.status_code == 200:
+            for g in res_post.json():
+                games_dict[str(g['id'])] = g
+                
+        return games_dict
+
+    except Exception as e:
+        st.error(f"API Connection Error: {e}")
+        return {}
 
 @st.cache_data(ttl=0)
 def load_picks():
@@ -26,7 +45,7 @@ def load_picks():
         df = pd.read_csv("live_predictions.csv")
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
-            # Clean IDs
+            # Clean IDs: Force to string, remove decimal suffixes
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         return df
     except:
@@ -40,7 +59,6 @@ graded_results = []
 upcoming_games = []
 
 if not df.empty:
-    # Check if manual columns exist in the CSV (Handle case where they don't)
     has_manual_scores = 'Manual_HomeScore' in df.columns
     
     for _, row in df.iterrows():
@@ -61,16 +79,17 @@ if not df.empty:
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
             
-        # PATH B: Manual Backfill (The fix for your issue)
-        # We check if the column exists AND the value is not empty (NaN)
-        elif has_manual_scores and pd.notnull(row['Manual_HomeScore']):
-            is_completed = True
+        # PATH B: Manual Backfill (History Fix)
+        elif has_manual_scores and pd.notnull(row.get('Manual_HomeScore')):
+            # Verify it's not a NaN value
             try:
-                home_score = int(float(row['Manual_HomeScore'])) # Handle 24.0 -> 24
-                away_score = int(float(row['Manual_AwayScore']))
-                date_str = str(row['Manual_Date'])
+                if float(row['Manual_HomeScore']) >= 0:
+                    is_completed = True
+                    home_score = int(float(row['Manual_HomeScore']))
+                    away_score = int(float(row['Manual_AwayScore']))
+                    date_str = str(row['Manual_Date'])
             except:
-                is_completed = False # Fallback if data is corrupt
+                is_completed = False
 
         # --- GRADING ---
         if is_completed:
@@ -78,7 +97,6 @@ if not df.empty:
             try: raw_home_spread = float(row['Pick_Line'])
             except: raw_home_spread = 0.0
             
-            # Spread Logic
             if pick_team == row['HomeTeam']:
                 margin = (home_score - away_score) + raw_home_spread
             else:
@@ -88,18 +106,17 @@ if not df.empty:
             elif margin > 0: spread_res = "WIN"
             else: spread_res = "LOSS"
 
-            # Total Logic
-            # Only grade total if we have data for it (Manual backfill might lack total outcome)
             total_res = "N/A"
-            # If we have score data, we can try to grade total
-            pick_side = row['Pick_Side'] 
-            try: pick_total = float(row['Pick_Total'])
-            except: pick_total = 0.0
-            
-            total_score = home_score + away_score
-            if total_score == pick_total: total_res = "PUSH"
-            elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
-            else: total_res = "WIN" if total_score < pick_total else "LOSS"
+            # Only grade total if we have data (Manual might skip this)
+            if 'Manual_HomeScore' not in row or pd.isnull(row['Manual_HomeScore']):
+                pick_side = row['Pick_Side'] 
+                try: pick_total = float(row['Pick_Total'])
+                except: pick_total = 0.0
+                total_score = home_score + away_score
+                
+                if total_score == pick_total: total_res = "PUSH"
+                elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
+                else: total_res = "WIN" if total_score < pick_total else "LOSS"
 
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
@@ -113,7 +130,11 @@ if not df.empty:
         # --- UPCOMING ---
         else:
             new_row = row.copy()
-            start_str = game.get('start_date') if game else None
+            
+            # Robust Date Fetch: Try snake_case OR camelCase
+            start_str = None
+            if game:
+                start_str = game.get('start_date') or game.get('startDate')
             
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
@@ -125,10 +146,9 @@ if not df.empty:
                 except:
                     new_row['Time'] = "Date Error"
             else:
-                # If it's a manual game that failed logic, it ends up here.
-                # But it won't have a date.
                 new_row['Kickoff_Sort'] = "2099-12-31"
-                new_row['Time'] = "TBD"
+                # If game is found but no date, say "No Date". If game not found, say "TBD"
+                new_row['Time'] = "Date Missing" if game else "TBD"
                 
             upcoming_games.append(new_row)
 
@@ -165,22 +185,16 @@ with tab2:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
-        # Stats
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         s_total = s_wins + s_loss
         s_pct = (s_wins / s_total * 100) if s_total > 0 else 0.0
-        
-        t_wins = len(res_df[res_df['Total Result'] == 'WIN'])
-        t_loss = len(res_df[res_df['Total Result'] == 'LOSS'])
-        t_total = t_wins + t_loss
-        t_pct = (t_wins / t_total * 100) if t_total > 0 else 0.0
 
         st.markdown("### 📊 ROI Tracker")
         m1, m2, m3 = st.columns(3)
         m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}%")
-        m2.metric("Total Record", f"{t_wins}-{t_loss}", f"{t_pct:.1f}%")
-        m3.metric("Graded Games", len(res_df))
+        m2.metric("Total Graded", len(res_df))
+        m3.metric("System Status", "Online")
         
         st.divider()
         def color_history(val):
@@ -188,6 +202,6 @@ with tab2:
             if val == "LOSS": return 'color: red; font-weight: bold'
             return 'color: gray'
 
-        st.dataframe(res_df.style.map(color_history, subset=['Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
+        st.dataframe(res_df.style.map(color_history, subset=['Spread Result']), hide_index=True, use_container_width=True)
     else:
         st.warning("No completed games found.")
