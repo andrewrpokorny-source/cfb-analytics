@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
-import pytz
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
@@ -45,14 +44,17 @@ if not df.empty:
         gid = int(row.get("GameID"))
         game = scores.get(gid)
         
-        # A. COMPLETED GAMES (For History Tab)
+        # A. COMPLETED GAMES
         if game and game.get('status') == 'completed':
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             
             # Grade Spread
             pick_team = row['Pick_Team']
-            raw_home_spread = float(row['Pick_Line'])
+            try:
+                raw_home_spread = float(row['Pick_Line'])
+            except:
+                raw_home_spread = 0.0
             
             if pick_team == row['HomeTeam']:
                 margin = (home_score - away_score) + raw_home_spread
@@ -66,7 +68,10 @@ if not df.empty:
             # Grade Total
             total_score = home_score + away_score
             pick_side = row['Pick_Side'] 
-            pick_total = float(row['Pick_Total'])
+            try:
+                pick_total = float(row['Pick_Total'])
+            except:
+                pick_total = 0.0
             
             if total_score == pick_total: total_res = "PUSH"
             elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
@@ -81,28 +86,31 @@ if not df.empty:
                 "Total Result": total_res
             })
         
-        # B. UPCOMING GAMES (For Board Tab)
+        # B. UPCOMING GAMES
         else:
-            # We copy the row so we can modify it without breaking the original DF
             new_row = row.copy()
             
-            # Inject Kickoff Time for sorting
+            # --- DATE PARSING LOGIC ---
+            start_str = None
             if game:
-                start_str = game.get('start_date') # ISO Format: 2025-12-20T19:30:00.000Z
-                new_row['Kickoff_Raw'] = start_str
-                
-                # Format for display (Optional: Convert to ET if you want, currently keeping simple)
+                start_str = game.get('start_date') # ISO: 2025-12-20T19:30:00.000Z
+            
+            if start_str:
+                new_row['Kickoff_Sort'] = start_str # Keep ISO for sorting
                 try:
-                    dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-                    # Convert to ET
-                    et_tz = pytz.timezone('US/Eastern')
-                    dt_et = dt.astimezone(et_tz)
-                    new_row['Time'] = dt_et.strftime('%a %I:%M %p') # "Sat 07:30 PM"
-                except:
-                    new_row['Time'] = "TBD"
+                    # Parse ISO (Standard Python 3.7+ handles 'Z' usually, but replace is safer)
+                    dt_utc = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                    
+                    # Convert to ET (UTC - 5 hours) manually to avoid pytz dependency
+                    dt_et = dt_utc - timedelta(hours=5)
+                    
+                    # Format nicely: "Sat 2:30 PM"
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p')
+                except Exception as e:
+                    new_row['Time'] = "Time Error"
             else:
-                new_row['Kickoff_Raw'] = "2099-12-31" # Push unknowns to bottom
-                new_row['Time'] = "Unknown"
+                new_row['Kickoff_Sort'] = "2099-12-31" # Force to bottom
+                new_row['Time'] = "TBD"
                 
             upcoming_games.append(new_row)
 
@@ -124,21 +132,19 @@ with tab1:
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
         
-        # SORTING MAGIC: Sort by Time first, then by Confidence
-        if 'Kickoff_Raw' in up_df.columns:
-            up_df['Kickoff_Raw'] = pd.to_datetime(up_df['Kickoff_Raw'])
-            up_df = up_df.sort_values(by=['Kickoff_Raw', 'Spread_Conf_Raw'], ascending=[True, False])
+        # SORTING: Kickoff Time (Ascending) -> Confidence (Descending)
+        if 'Kickoff_Sort' in up_df.columns:
+            up_df = up_df.sort_values(by=['Kickoff_Sort', 'Spread_Conf_Raw'], ascending=[True, False])
 
         col1, col2 = st.columns(2)
         with col1:
-            st.caption("Spread Picks (Sorted by Kickoff)")
-            # Added 'Time' column to view
+            st.caption("Spread Picks (Chronological)")
             st.dataframe(
                 up_df[['Time', 'Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']),
                 use_container_width=True, hide_index=True
             )
         with col2:
-            st.caption("Totals Picks (Sorted by Kickoff)")
+            st.caption("Totals Picks (Chronological)")
             st.dataframe(
                 up_df[['Time', 'Game', 'Total Pick', 'Total Book', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']),
                 use_container_width=True, hide_index=True
@@ -149,7 +155,6 @@ with tab1:
 with tab2:
     if graded_results:
         res_df = pd.DataFrame(graded_results)
-        # Sort history by Date (Newest first)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
@@ -184,6 +189,8 @@ with tab2:
     else:
         st.warning("No completed games found to grade.")
 
-# Footer
+# Debug Footer
 with st.expander("⚙️ System Status"):
     st.write(f"Loaded {len(df)} picks and {len(scores)} API games.")
+    if upcoming_games:
+        st.write(f"Sample Time Data: {upcoming_games[0].get('Kickoff_Sort')}")
