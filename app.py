@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
@@ -16,7 +17,8 @@ def fetch_scores():
                            headers=headers, 
                            params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
-            return {int(g['id']): g for g in res.json()}
+            # FORCE KEY TO STRING
+            return {str(g['id']): g for g in res.json()}
     except Exception as e:
         st.error(f"API Connection Error: {e}")
     return {}
@@ -25,10 +27,10 @@ def fetch_scores():
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # Ensure GameID is integer for matching
+        # FORCE COLUMN TO STRING (remove .0 if it exists)
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
-            df['GameID'] = df['GameID'].astype(int)
+            df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         return df
     except:
         return pd.DataFrame()
@@ -42,7 +44,8 @@ upcoming_games = []
 
 if not df.empty:
     for _, row in df.iterrows():
-        gid = int(row.get("GameID"))
+        # FORCE LOOKUP ID TO STRING
+        gid = str(row.get("GameID"))
         game = scores.get(gid)
         
         # A. COMPLETED GAMES (History)
@@ -86,22 +89,23 @@ if not df.empty:
         # B. UPCOMING GAMES (Board)
         else:
             new_row = row.copy()
+            
+            # Parsing Date if Game Found
             start_str = game.get('start_date') if game else None
             
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
                 try:
-                    # Bulletproof Parsing with Pandas
+                    # Bulletproof Parsing
                     dt = pd.to_datetime(start_str)
-                    # Convert to Eastern Time (UTC-5)
                     dt_et = dt.tz_convert('US/Eastern')
-                    new_row['Time'] = dt_et.strftime('%a %I:%M %p') # "Fri 08:00 PM"
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p')
                 except:
-                    # Fallback if timezone conversion fails
                     new_row['Time'] = dt.strftime('%a %I:%M %p')
             else:
+                # DEBUG: If game not found, mark it clearly
                 new_row['Kickoff_Sort'] = "2099-12-31"
-                new_row['Time'] = "Time TBD"
+                new_row['Time'] = "Time TBD" 
                 
             upcoming_games.append(new_row)
 
@@ -122,7 +126,6 @@ with tab1:
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
         
-        # Sort: Earliest Kickoff First
         if 'Kickoff_Sort' in up_df.columns:
             up_df = up_df.sort_values(by=['Kickoff_Sort', 'Spread_Conf_Raw'], ascending=[True, False])
 
@@ -147,7 +150,6 @@ with tab2:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
-        # Calculate Records
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         s_push = len(res_df[res_df['Spread Result'] == 'PUSH'])
@@ -167,8 +169,6 @@ with tab2:
         m3.metric("Graded Games", len(res_df))
         
         st.divider()
-        
-        # Color Logic for Win/Loss
         def color_history(val):
             if val == "WIN": return 'color: green; font-weight: bold'
             if val == "LOSS": return 'color: red; font-weight: bold'
@@ -182,8 +182,15 @@ with tab2:
         st.warning("No completed games found to grade.")
 
 # --- DEBUG FOOTER ---
-with st.expander("⚙️ System Status"):
+with st.expander("⚙️ System Status (IDs Debug)"):
     st.write(f"**API Games Fetched:** {len(scores)}")
-    if len(scores) == 0:
-        st.error("⚠️ API returned 0 games. Check your API Key in Settings > Secrets.")
     st.write(f"**CSV Picks Loaded:** {len(df)}")
+    
+    if not df.empty and len(scores) > 0:
+        # Show exact mismatch if any
+        sample_id = str(df.iloc[0]['GameID'])
+        st.write(f"Sample ID from CSV: `{sample_id}`")
+        if sample_id in scores:
+            st.success(f"✅ Match Found! API sees `{sample_id}`")
+        else:
+            st.error(f"❌ Match Failed. API Keys look like: {list(scores.keys())[:3]}")
