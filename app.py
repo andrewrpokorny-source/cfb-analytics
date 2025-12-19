@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
@@ -17,7 +16,7 @@ def fetch_scores():
                            headers=headers, 
                            params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
-            # FORCE KEY TO STRING
+            # Force Key to String for reliable matching
             return {str(g['id']): g for g in res.json()}
     except Exception as e:
         st.error(f"API Connection Error: {e}")
@@ -27,7 +26,7 @@ def fetch_scores():
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # FORCE COLUMN TO STRING (remove .0 if it exists)
+        # Clean IDs: Force to string, remove decimal suffixes like ".0"
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -44,7 +43,6 @@ upcoming_games = []
 
 if not df.empty:
     for _, row in df.iterrows():
-        # FORCE LOOKUP ID TO STRING
         gid = str(row.get("GameID"))
         game = scores.get(gid)
         
@@ -90,22 +88,33 @@ if not df.empty:
         else:
             new_row = row.copy()
             
-            # Parsing Date if Game Found
-            start_str = game.get('start_date') if game else None
+            # --- ROBUST DATE PARSING ---
+            # Try both snake_case (standard) and camelCase (rare API variance)
+            start_str = None
+            if game:
+                start_str = game.get('start_date') or game.get('startDate')
             
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
                 try:
-                    # Bulletproof Parsing
+                    # 1. Convert string to Datetime Object
                     dt = pd.to_datetime(start_str)
+                    
+                    # 2. Handle Timezones (API is usually UTC)
+                    if dt.tzinfo is None:
+                        dt = dt.tz_localize('UTC')
+                    
+                    # 3. Convert to Eastern Time
                     dt_et = dt.tz_convert('US/Eastern')
-                    new_row['Time'] = dt_et.strftime('%a %I:%M %p')
+                    
+                    # 4. Format nicely
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p') # e.g., "Sat 12:00 PM"
                 except:
-                    new_row['Time'] = dt.strftime('%a %I:%M %p')
+                    # If parsing fails, just show the raw string truncated
+                    new_row['Time'] = str(start_str)[:16]
             else:
-                # DEBUG: If game not found, mark it clearly
                 new_row['Kickoff_Sort'] = "2099-12-31"
-                new_row['Time'] = "Time TBD" 
+                new_row['Time'] = "Date Missing" # Changed from TBD to diagnose
                 
             upcoming_games.append(new_row)
 
@@ -126,6 +135,7 @@ with tab1:
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
         
+        # Sort by Date first, then Confidence
         if 'Kickoff_Sort' in up_df.columns:
             up_df = up_df.sort_values(by=['Kickoff_Sort', 'Spread_Conf_Raw'], ascending=[True, False])
 
@@ -182,15 +192,19 @@ with tab2:
         st.warning("No completed games found to grade.")
 
 # --- DEBUG FOOTER ---
-with st.expander("⚙️ System Status (IDs Debug)"):
+with st.expander("⚙️ System Status (Deep Debug)"):
     st.write(f"**API Games Fetched:** {len(scores)}")
     st.write(f"**CSV Picks Loaded:** {len(df)}")
     
     if not df.empty and len(scores) > 0:
-        # Show exact mismatch if any
         sample_id = str(df.iloc[0]['GameID'])
-        st.write(f"Sample ID from CSV: `{sample_id}`")
-        if sample_id in scores:
-            st.success(f"✅ Match Found! API sees `{sample_id}`")
+        match = scores.get(sample_id)
+        
+        st.write(f"**Sample ID:** `{sample_id}`")
+        if match:
+            st.success("✅ Game Object Found")
+            # Show the raw date field to verify the key name
+            st.write(f"**Raw Date Value:** `{match.get('start_date')}`")
+            st.write(f"**All Keys Available:** {list(match.keys())[:5]}...") 
         else:
-            st.error(f"❌ Match Failed. API Keys look like: {list(scores.keys())[:3]}")
+            st.error("❌ Match Failed for sample row.")
