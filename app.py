@@ -6,15 +6,16 @@ st.set_page_config(page_title="CFB Quant Grader", page_icon="🏈", layout="wide
 st.title("🏈 CFB Algorithmic Betting Engine")
 
 # --- 1. SETUP & DATA LOADING ---
-@st.cache_data(ttl=300) # Cache for 5 mins
+@st.cache_data(ttl=300) 
 def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
-        # Fetch games for the current week (Postseason Week 1)
+        
+        # CHANGED: Removed 'week=1'. Now fetches ALL Postseason games.
         res = requests.get("https://api.collegefootballdata.com/games", 
                            headers=headers, 
-                           params={"year": 2025, "seasonType": "postseason", "week": 1})
+                           params={"year": 2025, "seasonType": "postseason"}) 
         if res.status_code == 200:
             return {g['id']: g for g in res.json()}
     except:
@@ -31,7 +32,7 @@ def load_picks():
 df = load_picks()
 scores = fetch_scores()
 
-# --- 2. GRADING LOGIC (COMPLETED GAMES ONLY) ---
+# --- 2. GRADING LOGIC ---
 graded_results = []
 
 if not df.empty and scores:
@@ -39,40 +40,30 @@ if not df.empty and scores:
         gid = row.get("GameID")
         game = scores.get(gid)
         
-        # STRICTLY check for 'completed' status
         if game and game['status'] == 'completed':
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             
-            # --- Grade Spread ---
-            # Formula: (Pick Team Score - Opponent Score) + Spread > 0
+            # Grade Spread
             pick_team = row['Pick_Team']
             line = row['Pick_Line']
-            
             if pick_team == row['HomeTeam']:
                 margin = home_score - away_score
             else:
                 margin = away_score - home_score
             
-            # Handle Pushes
-            if (margin + line) == 0:
-                spread_res = "✋ PUSH"
-            elif (margin + line) > 0:
-                spread_res = "✅ WIN"
-            else:
-                spread_res = "❌ LOSS"
+            if (margin + line) == 0: spread_res = "✋ PUSH"
+            elif (margin + line) > 0: spread_res = "✅ WIN"
+            else: spread_res = "❌ LOSS"
 
-            # --- Grade Total ---
+            # Grade Total
             total_score = home_score + away_score
-            pick_side = row['Pick_Side'] # OVER or UNDER
+            pick_side = row['Pick_Side'] 
             pick_total = row['Pick_Total']
             
-            if total_score == pick_total:
-                total_res = "✋ PUSH"
-            elif pick_side == "OVER":
-                total_res = "✅ WIN" if total_score > pick_total else "❌ LOSS"
-            else: # UNDER
-                total_res = "✅ WIN" if total_score < pick_total else "❌ LOSS"
+            if total_score == pick_total: total_res = "✋ PUSH"
+            elif pick_side == "OVER": total_res = "✅ WIN" if total_score > pick_total else "❌ LOSS"
+            else: total_res = "✅ WIN" if total_score < pick_total else "❌ LOSS"
 
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
@@ -82,14 +73,13 @@ if not df.empty and scores:
                 "Total Result": total_res
             })
 
-# --- 3. DISPLAY SECTIONS ---
+# --- 3. DISPLAY ---
 
-# A. The Report Card (Top of Page)
+# A. Report Card
 if graded_results:
-    st.markdown("### 📝 Graded Results (Completed Games)")
+    st.markdown(f"### 📝 Graded Results ({len(graded_results)} Games)")
     results_df = pd.DataFrame(graded_results)
     
-    # Simple Styler to color text green/red
     def color_results(val):
         if "WIN" in val: return 'color: green; font-weight: bold'
         if "LOSS" in val: return 'color: red; font-weight: bold'
@@ -97,15 +87,13 @@ if graded_results:
 
     st.dataframe(
         results_df.style.map(color_results, subset=['Spread Result', 'Total Result']),
-        use_container_width=True,
-        hide_index=True
+        use_container_width=True, hide_index=True
     )
     st.divider()
 
-# B. The Betting Board (Upcoming Games)
+# B. Upcoming Board
 st.subheader("🔮 Upcoming Predictions")
 
-# Color Logic for Confidence
 def color_confidence(val):
     try:
         score = float(val.strip('%'))
@@ -116,6 +104,11 @@ def color_confidence(val):
     return ''
 
 if not df.empty:
+    # Filter out completed games from the "Upcoming" view
+    # We do this by checking if the GameID is in the 'graded_results' list? 
+    # Simpler: Just rely on the user visually distinguishing them, or filter logic:
+    # (Optional: Filter df to exclude GIDs that are in scores and completed)
+    
     col1, col2 = st.columns(2)
     with col1:
         st.caption("Spread Edges")
@@ -130,4 +123,4 @@ if not df.empty:
             use_container_width=True, hide_index=True
         )
 else:
-    st.info("No predictions found. Run the pipeline!")
+    st.info("No predictions found.")

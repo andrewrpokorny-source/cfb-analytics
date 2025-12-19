@@ -1,0 +1,21 @@
+--- 🏈 CFB PREDICTOR (DATABASE MODE) 🏈 ---
+Fetching Data for 2025 Bowl Season...
+   -> Fetching full season stats...
+   -> Shopping across 7 legitimate books...
+
+✅ Database Updated: 35 total tracked games.
+
+==================================================
+🎯 TOP SPREAD EDGES (Current Week)
+==================================================
+                             Game           Spread Pick Spread Conf
+                Iowa @ Vanderbilt     Vanderbilt (-5.5)       61.3%
+                Miami @ Texas A&M          Miami (-3.5)       57.2%
+                    LSU @ Houston              LSU (-3)       56.5%
+                     UConn @ Army           UConn (-10)       56.0%
+              Virginia @ Missouri         Missouri (-4)       55.9%
+     Florida International @ UTSA           UTSA (-6.5)       55.5%
+               Georgia Tech @ BYU            BYU (-4.5)       55.0%
+             Penn State @ Clemson       Penn State (-3)       55.0%
+Coastal Carolina @ Louisiana Tech Louisiana Tech (-9.5)       54.6%
+           New Mexico @ Minnesota     New Mexico (-2.5)       54.2%

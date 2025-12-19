@@ -8,17 +8,8 @@ load_dotenv()
 API_KEY = os.getenv("CFBD_API_KEY")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
 
-# STRICTLY US REGULATED BOOKS
-# Removed: Bovada, BetOnline
-VALID_BOOKS = [
-    'DraftKings', 
-    'FanDuel', 
-    'BetMGM', 
-    'Caesars', 
-    'PointsBet', 
-    'BetRivers', 
-    'Unibet'
-]
+VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
+HISTORY_FILE = "live_predictions.csv"
 
 def get_data(endpoint, params):
     try:
@@ -53,7 +44,7 @@ def build_decay_lookup(year):
     return lookup
 
 def main():
-    print("--- 🏈 CFB PREDICTOR (US REGULATED BOOKS ONLY) 🏈 ---")
+    print("--- 🏈 CFB PREDICTOR (DATABASE MODE) 🏈 ---")
     YEAR = 2025; SEASON_TYPE = "postseason"; WEEK = 1
     
     try:
@@ -76,11 +67,10 @@ def main():
 
     shopping_cart = {}
     for g in lines_data:
-        # Filter strictly for the VALID_BOOKS list
         valid_lines = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
         shopping_cart[g['id']] = valid_lines
 
-    final_predictions = []
+    current_week_preds = []
     games = pd.DataFrame(games_data).rename(columns={'homeTeam': 'home_team', 'awayTeam': 'away_team'}).to_dict('records')
 
     print(f"   -> Shopping across {len(VALID_BOOKS)} legitimate books...")
@@ -102,85 +92,83 @@ def main():
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        best_spread = {"conf": -1, "book": "N/A", "pick": "N/A"}
-        best_total = {"conf": -1, "book": "N/A", "pick": "N/A"}
+        best_spread = {"conf": -1, "book": "N/A", "pick": "N/A", "raw_spread": 0, "pick_team": ""}
+        best_total = {"conf": -1, "book": "N/A", "pick": "N/A", "raw_total": 0, "pick_side": ""}
 
-        # SHOP EVERY BOOK
         for line in lines:
             spread_val = line.get('spread')
             total_val = line.get('overUnder')
             book = line.get('provider')
 
-            # 1. Evaluate SPREAD
             if spread_val is not None:
                 row = base_row.copy()
                 row['spread'] = spread_val
                 row['overUnder'] = total_val if total_val else 55.0
-                
                 feat_cols = model_spread.feature_names_in_
                 features = pd.DataFrame([row])[feat_cols]
                 cover_prob = model_spread.predict_proba(features)[0][1]
-                
                 s_conf = max(cover_prob, 1-cover_prob)
                 if s_conf > best_spread['conf']:
                     best_spread = {
-                        "conf": s_conf,
-                        "book": book,
-                        "pick": f"{home if cover_prob > 0.5 else away} ({spread_val})"
+                        "conf": s_conf, "book": book, "pick": f"{home if cover_prob > 0.5 else away} ({spread_val})",
+                        "raw_spread": spread_val, "pick_team": home if cover_prob > 0.5 else away
                     }
 
-            # 2. Evaluate TOTAL
             if total_val is not None:
                 row = base_row.copy()
                 row['spread'] = spread_val if spread_val else 0.0 
                 row['overUnder'] = total_val
-                
                 feat_cols = model_spread.feature_names_in_
                 features = pd.DataFrame([row])[feat_cols]
                 over_prob = model_total.predict_proba(features)[0][1]
-                
                 t_conf = max(over_prob, 1-over_prob)
                 if t_conf > best_total['conf']:
                     best_total = {
-                        "conf": t_conf,
-                        "book": book,
-                        "pick": f"{'OVER' if over_prob > 0.5 else 'UNDER'} {total_val}"
+                        "conf": t_conf, "book": book, "pick": f"{'OVER' if over_prob > 0.5 else 'UNDER'} {total_val}",
+                        "raw_total": total_val, "pick_side": "OVER" if over_prob > 0.5 else "UNDER"
                     }
 
         if best_spread['conf'] != -1:
-            final_predictions.append({
-                "Game": f"{away} @ {home}",
-                "Spread Pick": best_spread['pick'],
-                "Spread Book": best_spread['book'],
-                "Spread Conf": f"{best_spread['conf']:.1%}",
-                "Spread_Conf_Raw": best_spread['conf'],
-                "Total Pick": best_total['pick'],
-                "Total Book": best_total['book'],
-                "Total Conf": f"{best_total['conf']:.1%}",
-                "Total_Conf_Raw": best_total['conf']
+            current_week_preds.append({
+                "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
+                "Spread Pick": best_spread['pick'], "Spread Book": best_spread['book'],
+                "Spread Conf": f"{best_spread['conf']:.1%}", "Spread_Conf_Raw": best_spread['conf'],
+                "Pick_Team": best_spread['pick_team'], "Pick_Line": best_spread['raw_spread'],
+                "Total Pick": best_total['pick'], "Total Book": best_total['book'],
+                "Total Conf": f"{best_total['conf']:.1%}", "Total_Conf_Raw": best_total['conf'],
+                "Pick_Side": best_total['pick_side'], "Pick_Total": best_total['raw_total']
             })
 
-    if final_predictions:
-        df = pd.DataFrame(final_predictions)
+    # --- DATABASE MERGE LOGIC ---
+    if current_week_preds:
+        new_df = pd.DataFrame(current_week_preds)
         
-        pd.set_option('display.max_columns', None)
-        pd.set_option('display.width', 1000)
+        # 1. Load History if exists
+        if os.path.exists(HISTORY_FILE):
+            try:
+                history_df = pd.read_csv(HISTORY_FILE)
+                # 2. Combine: Put NEWEST predictions at the top
+                combined_df = pd.concat([new_df, history_df], ignore_index=True)
+                # 3. Deduplicate: Keep the NEWEST version of any GameID
+                # (This ensures if lines updated today, we see the new one)
+                combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
+            except Exception as e:
+                print(f"Error reading history, starting fresh: {e}")
+                combined_df = new_df
+        else:
+            combined_df = new_df
 
-        print("\n" + "="*50)
-        print("🎯 TOP SPREAD EDGES (Legit Books Only)")
-        print("="*50)
-        spread_view = df.sort_values("Spread_Conf_Raw", ascending=False)
-        print(spread_view[['Game', 'Spread Pick', 'Spread Book', 'Spread Conf']].head(20).to_string(index=False))
-
-        print("\n" + "="*50)
-        print("📉 TOP TOTALS EDGES (Over/Under)")
-        print("="*50)
-        total_view = df.sort_values("Total_Conf_Raw", ascending=False)
-        print(total_view[['Game', 'Total Pick', 'Total Book', 'Total Conf']].head(20).to_string(index=False))
+        # Save back to CSV
+        combined_df.to_csv(HISTORY_FILE, index=False)
+        print(f"\n✅ Database Updated: {len(combined_df)} total tracked games.")
         
-        df.to_csv("live_predictions.csv", index=False)
+        # Show Top Picks
+        print("\n" + "="*50)
+        print("🎯 TOP SPREAD EDGES (Current Week)")
+        print("="*50)
+        print(new_df.sort_values("Spread_Conf_Raw", ascending=False)[['Game', 'Spread Pick', 'Spread Conf']].head(10).to_string(index=False))
     else:
-        print("No lines found. (API might be returning only Consensus or Offshore lines for these specific games).")
+        print("No new games found.")
 
 if __name__ == "__main__":
     main()
