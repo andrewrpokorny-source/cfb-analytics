@@ -11,19 +11,28 @@ def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
+        # Fetching ALL Postseason games
         res = requests.get("https://api.collegefootballdata.com/games", 
                            headers=headers, 
                            params={"year": 2025, "seasonType": "postseason"})
         if res.status_code == 200:
-            return {g['id']: g for g in res.json()}
-    except:
-        return {}
+            # Force ID to int for safety
+            return {int(g['id']): g for g in res.json()}
+        else:
+            st.error(f"API Error: {res.status_code}")
+    except Exception as e:
+        st.error(f"API Connection Failed: {e}")
     return {}
 
-@st.cache_data
+@st.cache_data(ttl=0) # ttl=0 forces it to reload CSV on every refresh
 def load_picks():
     try:
-        return pd.read_csv("live_predictions.csv")
+        df = pd.read_csv("live_predictions.csv")
+        # Clean up GameID to ensure it matches API (Force to Int)
+        if 'GameID' in df.columns:
+            df = df.dropna(subset=['GameID'])
+            df['GameID'] = df['GameID'].astype(int)
+        return df
     except:
         return pd.DataFrame()
 
@@ -36,17 +45,19 @@ upcoming_games = []
 
 if not df.empty:
     for _, row in df.iterrows():
-        gid = row.get("GameID")
+        gid = int(row.get("GameID")) # Strict Int conversion
         game = scores.get(gid)
         
-        # IF GAME IS COMPLETED -> GRADE IT
-        if game and game['status'] == 'completed':
+        # Check if game exists in API and is completed
+        if game and game.get('status') == 'completed':
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
+            if home_score is None: home_score = 0
+            if away_score is None: away_score = 0
             
             # Grade Spread
             pick_team = row['Pick_Team']
-            raw_home_spread = row['Pick_Line'] 
+            raw_home_spread = float(row['Pick_Line'])
             
             if pick_team == row['HomeTeam']:
                 margin = (home_score - away_score) + raw_home_spread
@@ -60,7 +71,7 @@ if not df.empty:
             # Grade Total
             total_score = home_score + away_score
             pick_side = row['Pick_Side'] 
-            pick_total = row['Pick_Total']
+            pick_total = float(row['Pick_Total'])
             
             if total_score == pick_total: total_res = "PUSH"
             elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
@@ -75,17 +86,15 @@ if not df.empty:
                 "Total Result": total_res
             })
         
-        # IF GAME IS NOT COMPLETED -> ADD TO BOARD
         else:
+            # If not completed, it goes to Board
             upcoming_games.append(row)
 
-# --- 3. CREATE TABS ---
+# --- 3. TABS UI ---
 tab1, tab2 = st.tabs(["🔮 Betting Board", "📜 Performance History"])
 
-# --- TAB 1: UPCOMING GAMES ---
 with tab1:
     st.markdown("### Active & Upcoming Games")
-    
     def color_confidence(val):
         try:
             score = float(val.strip('%'))
@@ -97,8 +106,11 @@ with tab1:
 
     if upcoming_games:
         up_df = pd.DataFrame(upcoming_games)
+        # Sort by confidence if available
+        if "Spread_Conf_Raw" in up_df.columns:
+            up_df = up_df.sort_values("Spread_Conf_Raw", ascending=False)
+            
         col1, col2 = st.columns(2)
-        
         with col1:
             st.caption("Spread Edges")
             st.dataframe(
@@ -112,14 +124,12 @@ with tab1:
                 use_container_width=True, hide_index=True
             )
     else:
-        st.info("No upcoming games found. Check back later!")
+        st.info("No upcoming games found.")
 
-# --- TAB 2: HISTORY & METRICS ---
 with tab2:
     if graded_results:
         res_df = pd.DataFrame(graded_results)
         
-        # --- CALCULATE METRICS ---
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         s_push = len(res_df[res_df['Spread Result'] == 'PUSH'])
@@ -132,18 +142,14 @@ with tab2:
         t_total = t_wins + t_loss
         t_pct = (t_wins / t_total * 100) if t_total > 0 else 0.0
 
-        # --- DISPLAY SCOREBOARD ---
         st.markdown("### 📊 ROI Tracker")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Spread Record", f"{s_wins}-{s_loss}-{s_push}", f"{s_pct:.1f}% Win Rate")
-        m2.metric("Total Record", f"{t_wins}-{t_loss}-{t_push}", f"{t_pct:.1f}% Win Rate")
-        m3.metric("Total Graded Games", len(res_df))
+        m1.metric("Spread Record", f"{s_wins}-{s_loss}-{s_push}", f"{s_pct:.1f}%")
+        m2.metric("Total Record", f"{t_wins}-{t_loss}-{t_push}", f"{t_pct:.1f}%")
+        m3.metric("Graded Games", len(res_df))
         
         st.divider()
-        
-        # --- DISPLAY HISTORY TABLE ---
         st.markdown("### 📜 Game Log")
-        
         def color_history(val):
             if val == "WIN": return 'color: green; font-weight: bold'
             if val == "LOSS": return 'color: red; font-weight: bold'
@@ -154,4 +160,18 @@ with tab2:
             use_container_width=True, hide_index=True
         )
     else:
-        st.info("No completed games to grade yet.")
+        st.warning("No completed games found to grade.")
+
+# --- 4. DEBUG FOOTER (Use this to solve the mystery) ---
+with st.expander("⚙️ System Status (Click if data is missing)"):
+    st.write(f"**CSV Rows Loaded:** {len(df)}")
+    st.write(f"**API Games Fetched:** {len(scores)}")
+    
+    if not df.empty:
+        sample_id = df.iloc[0]['GameID']
+        st.write(f"**Sample ID from CSV:** {sample_id} (Type: {type(sample_id)})")
+        if scores:
+            match = scores.get(int(sample_id))
+            st.write(f"**API Match for {sample_id}:** {'✅ Found' if match else '❌ Not Found'}")
+            if match:
+                st.write(f"**Game Status:** {match.get('status')}")
