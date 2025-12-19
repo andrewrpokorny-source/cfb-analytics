@@ -12,7 +12,7 @@ def fetch_scores():
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
         
-        # Fetch Regular AND Postseason to ensure we catch everything
+        # Fetch Regular AND Postseason
         res_reg = requests.get("https://api.collegefootballdata.com/games", 
                                headers=headers, params={"year": 2025, "seasonType": "regular"})
         res_post = requests.get("https://api.collegefootballdata.com/games", 
@@ -89,19 +89,21 @@ if not df.empty:
             elif margin > 0: spread_res = "WIN"
             else: spread_res = "LOSS"
 
-            # Total Grading
+            # Total Grading (UNLOCKED)
+            # We now allow grading for ALL completed games, including manual backfills
             total_res = "N/A"
-            # We grade totals if it's an API game OR if we trust the manual data
-            # (Currently assuming manual backfill didn't have real total picks, so it might return N/A)
-            if 'Manual_HomeScore' not in row or pd.isnull(row['Manual_HomeScore']):
-                pick_side = row['Pick_Side'] 
-                try: pick_total = float(row['Pick_Total'])
+            pick_side = row.get('Pick_Side') 
+            
+            if pick_side:
+                try: pick_total = float(row.get('Pick_Total', 0))
                 except: pick_total = 0.0
-                total_score = home_score + away_score
                 
-                if total_score == pick_total: total_res = "PUSH"
-                elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
-                else: total_res = "WIN" if total_score < pick_total else "LOSS"
+                # Only grade if there is a valid total line
+                if pick_total > 0:
+                    total_score = home_score + away_score
+                    if total_score == pick_total: total_res = "PUSH"
+                    elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
+                    else: total_res = "WIN" if total_score < pick_total else "LOSS"
 
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
@@ -131,8 +133,7 @@ if not df.empty:
                 new_row['Kickoff_Sort'] = "2099-12-31"
                 new_row['Time'] = "Date Missing" if game else "TBD"
             
-            # Clean up Book Name
-            new_row['Book'] = str(row['Spread Book']).replace("DraftKings", "DK").replace("Bovada", "Bov").replace("FanDuel", "FD")
+            new_row['Book'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov").replace("FanDuel", "FD")
             upcoming_games.append(new_row)
 
 # --- 3. UI ---
@@ -168,13 +169,11 @@ with tab2:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
-        # Spread Stats
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         s_total = s_wins + s_loss
         s_pct = (s_wins / s_total * 100) if s_total > 0 else 0.0
         
-        # Total Stats
         t_wins = len(res_df[res_df['Total Result'] == 'WIN'])
         t_loss = len(res_df[res_df['Total Result'] == 'LOSS'])
         t_total = t_wins + t_loss
@@ -182,9 +181,7 @@ with tab2:
 
         st.markdown("### 📊 ROI Tracker")
         m1, m2, m3 = st.columns(3)
-        
         m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}%")
-        # NEW: Show Total Record here
         m2.metric("Total Record", f"{t_wins}-{t_loss}", f"{t_pct:.1f}%")
         m3.metric("Graded Games", len(res_df))
         
@@ -194,7 +191,6 @@ with tab2:
             if val == "LOSS": return 'color: red; font-weight: bold'
             return 'color: gray'
 
-        # Highlight BOTH Result columns
         st.dataframe(res_df.style.map(color_history, subset=['Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
     else:
         st.warning("No completed games found.")
