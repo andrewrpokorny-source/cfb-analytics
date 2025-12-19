@@ -1,4 +1,10 @@
 GameID,HomeTeam,AwayTeam,Game,Spread Pick,Spread Book,Spread Conf,Spread_Conf_Raw,Pick_Team,Pick_Line,Total Pick,Total Book,Total Conf,Total_Conf_Raw,Pick_Side,Pick_Total
+401778123.0,,,None @ None,None (-3),Backfill,N/A (Backfilled),0.5,,-3.0,UNDER 53.5,Backfill,N/A,0.5,UNDER,53.5
+401778302.0,,,None @ None,None (-9.5),Backfill,N/A (Backfilled),0.5,,-9.5,UNDER 55.5,Backfill,N/A,0.5,UNDER,55.5
+401778303.0,,,None @ None,None (-3),Backfill,N/A (Backfilled),0.5,,-3.0,OVER 47.5,Backfill,N/A,0.5,OVER,47.5
+401778304.0,,,None @ None,None (-4),Backfill,N/A (Backfilled),0.5,,-4.0,UNDER 52.5,Backfill,N/A,0.5,UNDER,52.5
+401778305.0,,,None @ None,None (+1.5),Backfill,N/A (Backfilled),0.5,,1.5,UNDER 60.5,Backfill,N/A,0.5,UNDER,60.5
+401838053.0,,,None @ None,None (-1.5),Backfill,N/A (Backfilled),0.5,,-1.5,UNDER 55.5,Backfill,N/A,0.5,UNDER,55.5
 401778306.0,Western Michigan,Kennesaw State,Kennesaw State @ Western Michigan,Western Michigan (-3.5),DraftKings,51.4%,0.5138373674451969,Western Michigan,-3.5,UNDER 47.5,DraftKings,50.2%,0.5021089322171053,UNDER,47.5
 401778307.0,NC State,Memphis,Memphis @ NC State,Memphis (+3.5),DraftKings,50.6%,0.5064288727228887,Memphis,-3.5,OVER 56.5,DraftKings,55.0%,0.5501571586747324,OVER,56.5
 401779840.0,Oklahoma,Alabama,Alabama @ Oklahoma,Oklahoma (-1.5),DraftKings,51.4%,0.5143429541129546,Oklahoma,-1.5,UNDER 40.5,DraftKings,53.3%,0.5325826522577413,UNDER,40.5
