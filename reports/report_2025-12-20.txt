@@ -1,21 +1,9 @@
---- 🏈 CFB PREDICTOR (FINAL PRODUCTION BUILD) 🏈 ---
-Fetching Data for 2025 Bowl Season...
-   -> Fetching full season stats...
-   -> Shopping across 9 providers...
+--- 🏈 CFB PREDICTOR (DYNAMIC WEEK) 🏈 ---
+   -> Detecting active week from API calendar...
+   -> Processing postseason | Week 1
+   -> Fetching Games, Lines, and Talent data...
+   -> Fetching season stats for feature engineering...
+   -> Analyzing 46 games...
 
-✅ Database Updated: 50 tracked games.
-
-==================================================
-🎯 TOP SPREAD EDGES (Live w/ Expanded Books)
-==================================================
-                             Game           Spread Pick Spread Book Spread Conf
-                Iowa @ Vanderbilt     Vanderbilt (-5.5)  DraftKings       61.3%
-                Miami @ Texas A&M            Miami (+3)  DraftKings       57.2%
-                    LSU @ Houston              LSU (+3)      Bovada       56.5%
-              Virginia @ Missouri         Missouri (-4)      Bovada       56.1%
-                     UConn @ Army          UConn (+9.5)  DraftKings       56.0%
-     Florida International @ UTSA             UTSA (-6)  DraftKings       55.5%
-             Penn State @ Clemson     Penn State (+3.5)      Bovada       55.0%
-               Georgia Tech @ BYU              BYU (-5)      Bovada       55.0%
-Coastal Carolina @ Louisiana Tech Louisiana Tech (-9.5)      Bovada       54.6%
-           New Mexico @ Minnesota     New Mexico (+2.5)  DraftKings       54.2%
+✅ Updated live_predictions.csv with 31 active games.
+   (Check the App Dashboard to see the new board)

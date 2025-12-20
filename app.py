@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+from datetime import datetime, timezone
 
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Algorithmic Betting Engine")
@@ -12,7 +13,7 @@ def fetch_scores():
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
         
-        # Fetch Regular AND Postseason
+        # Universal Fetch: Grab BOTH Regular and Postseason to catch every 2025 game
         res_reg = requests.get("https://api.collegefootballdata.com/games", 
                                headers=headers, params={"year": 2025, "seasonType": "regular"})
         res_post = requests.get("https://api.collegefootballdata.com/games", 
@@ -46,40 +47,25 @@ scores = fetch_scores()
 graded_results = []
 upcoming_games = []
 
+# Get current time in UTC to filter out past games
+now_utc = datetime.now(timezone.utc)
+
 if not df.empty:
-    has_manual_scores = 'Manual_HomeScore' in df.columns
-    
     for _, row in df.iterrows():
         gid = str(row.get("GameID"))
         game = scores.get(gid)
         
-        is_completed = False
-        home_score = 0
-        away_score = 0
-        date_str = "N/A"
-
-        # Routing Logic
+        # --- A. GRADING LOGIC (API ONLY) ---
         if game and game.get('status') == 'completed':
-            is_completed = True
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
-        elif has_manual_scores and pd.notnull(row.get('Manual_HomeScore')):
-            try:
-                if float(row['Manual_HomeScore']) >= 0:
-                    is_completed = True
-                    home_score = int(float(row['Manual_HomeScore']))
-                    away_score = int(float(row['Manual_AwayScore']))
-                    date_str = str(row['Manual_Date'])
-            except: is_completed = False
-
-        # --- GRADING ---
-        if is_completed:
+            
+            # 1. Spread Result
             pick_team = row['Pick_Team']
             try: raw_home_spread = float(row['Pick_Line'])
             except: raw_home_spread = 0.0
             
-            # Spread Grading
             if pick_team == row['HomeTeam']:
                 margin = (home_score - away_score) + raw_home_spread
             else:
@@ -89,21 +75,17 @@ if not df.empty:
             elif margin > 0: spread_res = "WIN"
             else: spread_res = "LOSS"
 
-            # Total Grading (UNLOCKED)
-            # We now allow grading for ALL completed games, including manual backfills
+            # 2. Total Result
             total_res = "N/A"
-            pick_side = row.get('Pick_Side') 
+            pick_side = row.get('Pick_Side')
+            try: pick_total = float(row.get('Pick_Total', 0))
+            except: pick_total = 0.0
             
-            if pick_side:
-                try: pick_total = float(row.get('Pick_Total', 0))
-                except: pick_total = 0.0
-                
-                # Only grade if there is a valid total line
-                if pick_total > 0:
-                    total_score = home_score + away_score
-                    if total_score == pick_total: total_res = "PUSH"
-                    elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
-                    else: total_res = "WIN" if total_score < pick_total else "LOSS"
+            if pick_total > 0:
+                total_score = home_score + away_score
+                if total_score == pick_total: total_res = "PUSH"
+                elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
+                else: total_res = "WIN" if total_score < pick_total else "LOSS"
 
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
@@ -114,29 +96,42 @@ if not df.empty:
                 "Total Result": total_res
             })
         
-        # --- UPCOMING ---
+        # --- B. UPCOMING GAMES ---
         else:
             new_row = row.copy()
             start_str = None
             if game:
                 start_str = game.get('start_date') or game.get('startDate')
             
+            # DATE PARSING & FILTERING
+            show_game = True
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
                 try:
+                    # Parse to UTC
                     dt = pd.to_datetime(start_str)
                     if dt.tzinfo is None: dt = dt.tz_localize('UTC')
+                    
+                    # TIME FILTER: If game started already, hide from board
+                    # (Buffer: we hide it 15 mins after kickoff to be safe)
+                    if dt < now_utc:
+                        show_game = False
+                    
+                    # Convert to Eastern for Display
                     dt_et = dt.tz_convert('US/Eastern')
                     new_row['Time'] = dt_et.strftime('%a %I:%M %p')
-                except: new_row['Time'] = "Date Error"
+                except: 
+                    new_row['Time'] = "Date Error"
             else:
                 new_row['Kickoff_Sort'] = "2099-12-31"
                 new_row['Time'] = "Date Missing" if game else "TBD"
             
-            new_row['Book'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov").replace("FanDuel", "FD")
-            upcoming_games.append(new_row)
+            # Only append if it's in the future
+            if show_game:
+                new_row['Book'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov").replace("FanDuel", "FD")
+                upcoming_games.append(new_row)
 
-# --- 3. UI ---
+# --- 3. UI DISPLAY ---
 tab1, tab2 = st.tabs(["🔮 Betting Board", "📜 Performance History"])
 
 with tab1:
@@ -162,7 +157,7 @@ with tab1:
             st.caption("Totals Picks")
             st.dataframe(up_df[['Time', 'Game', 'Book', 'Total Pick', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']), hide_index=True, use_container_width=True)
     else:
-        st.info("No upcoming games found.")
+        st.info("No upcoming games found. (All active games are in progress or completed)")
 
 with tab2:
     if graded_results:
@@ -193,4 +188,4 @@ with tab2:
 
         st.dataframe(res_df.style.map(color_history, subset=['Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
     else:
-        st.warning("No completed games found.")
+        st.info("History will populate as games finish.")
