@@ -13,7 +13,6 @@ def fetch_scores():
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
         
-        # Universal Fetch: Grab BOTH Regular and Postseason to catch every 2025 game
         res_reg = requests.get("https://api.collegefootballdata.com/games", 
                                headers=headers, params={"year": 2025, "seasonType": "regular"})
         res_post = requests.get("https://api.collegefootballdata.com/games", 
@@ -33,6 +32,7 @@ def fetch_scores():
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
+        # Clean up GameID column
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -55,13 +55,33 @@ if not df.empty:
         gid = str(row.get("GameID"))
         game = scores.get(gid)
         
-        # --- A. GRADING LOGIC (API ONLY) ---
+        is_completed = False
+        home_score = 0
+        away_score = 0
+        date_str = "N/A"
+
+        # --- A. DETERMINE STATUS (API vs MANUAL) ---
+        # 1. Check API first
         if game and game.get('status') == 'completed':
+            is_completed = True
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
-            
-            # 1. Spread Result
+        
+        # 2. If API fails, check Manual Injection
+        elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
+            try:
+                if float(row['Manual_HomeScore']) >= 0:
+                    is_completed = True
+                    home_score = int(float(row['Manual_HomeScore']))
+                    away_score = int(float(row['Manual_AwayScore']))
+                    date_str = str(row.get('Manual_Date', 'N/A'))
+            except: 
+                pass
+
+        # --- B. GRADING LOGIC ---
+        if is_completed:
+            # Spread Result
             pick_team = row['Pick_Team']
             try: raw_home_spread = float(row['Pick_Line'])
             except: raw_home_spread = 0.0
@@ -75,7 +95,7 @@ if not df.empty:
             elif margin > 0: spread_res = "WIN"
             else: spread_res = "LOSS"
 
-            # 2. Total Result
+            # Total Result
             total_res = "N/A"
             pick_side = row.get('Pick_Side')
             try: pick_total = float(row.get('Pick_Total', 0))
@@ -96,7 +116,7 @@ if not df.empty:
                 "Total Result": total_res
             })
         
-        # --- B. UPCOMING GAMES ---
+        # --- C. UPCOMING GAMES ---
         else:
             new_row = row.copy()
             start_str = None
@@ -108,16 +128,13 @@ if not df.empty:
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
                 try:
-                    # Parse to UTC
                     dt = pd.to_datetime(start_str)
                     if dt.tzinfo is None: dt = dt.tz_localize('UTC')
                     
-                    # TIME FILTER: If game started already, hide from board
-                    # (Buffer: we hide it 15 mins after kickoff to be safe)
+                    # TIME FILTER: Hide if already started
                     if dt < now_utc:
                         show_game = False
                     
-                    # Convert to Eastern for Display
                     dt_et = dt.tz_convert('US/Eastern')
                     new_row['Time'] = dt_et.strftime('%a %I:%M %p')
                 except: 
@@ -126,7 +143,6 @@ if not df.empty:
                 new_row['Kickoff_Sort'] = "2099-12-31"
                 new_row['Time'] = "Date Missing" if game else "TBD"
             
-            # Only append if it's in the future
             if show_game:
                 new_row['Book'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov").replace("FanDuel", "FD")
                 upcoming_games.append(new_row)
