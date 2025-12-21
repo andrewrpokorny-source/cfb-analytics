@@ -1,4 +1,9 @@
 GameID,HomeTeam,AwayTeam,Game,Spread Pick,Spread Book,Spread Conf,Spread_Conf_Raw,Pick_Team,Pick_Line,Total Pick,Total Book,Total Conf,Total_Conf_Raw,Pick_Side,Pick_Total,Manual_Date,Manual_HomeScore,Manual_AwayScore
+MANUAL_20251216_Tro,Troy,Jacksonville State,Jacksonville State @ Troy,Troy (-3.5),Restored,51.3%,0.5129734601491301,Troy,-3.5,OVER 47.5,Restored,52.7%,0.5271386316590045,OVER,47.5,2025-12-16,13.0,17.0
+MANUAL_20251217_Sou,South Florida,Old Dominion,Old Dominion @ South Florida,South Florida (-4.0),Restored,55.3%,0.553084050736079,South Florida,-4.0,UNDER 52.5,Restored,50.9%,0.508818749564302,UNDER,52.5,2025-12-17,10.0,24.0
+MANUAL_20251217_Lou,Louisiana,Delaware,Delaware @ Louisiana,Louisiana (+1.5),Restored,56.2%,0.561543590059505,Louisiana,1.5,OVER 60.5,Restored,53.4%,0.5340910561812735,OVER,60.5,2025-12-17,13.0,20.0
+MANUAL_20251218_Ark,Arkansas State,Missouri State,Missouri State @ Arkansas State,Arkansas State (-1.5),Restored,55.7%,0.5574822562975876,Arkansas State,-1.5,OVER 55.5,Restored,52.2%,0.5218431866368974,OVER,55.5,2025-12-18,34.0,28.0
+MANUAL_20251219_Wes,Western Kentucky,Sam Houston State,Sam Houston State @ Western Kentucky,Sam Houston State (-2.5),Restored,50.5%,0.5047262794040726,Sam Houston State,2.5,OVER 57.5,Restored,51.0%,0.5096892338877668,OVER,57.5,2025-12-19,41.0,28.0
 401779843.0,Oregon,James Madison,James Madison @ Oregon,James Madison (+20.5),DraftKings,50.8%,0.5082717349120763,James Madison,-20.5,UNDER 47.5,DraftKings,63.3%,0.632560284569824,UNDER,47.5,,,
 401778308.0,Utah State,Washington State,Washington State @ Utah State,Utah State (-1.5),DraftKings,50.3%,0.5028388574855756,Utah State,-1.5,UNDER 49.5,DraftKings,55.6%,0.5563582994280203,UNDER,49.5,,,
 401778309.0,Louisville,Toledo,Toledo @ Louisville,Louisville (-7),DraftKings,51.4%,0.5143651993059024,Louisville,-7.0,UNDER 44.5,DraftKings,57.8%,0.5778832699898577,UNDER,44.5,,,
