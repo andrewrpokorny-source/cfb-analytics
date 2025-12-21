@@ -18,18 +18,17 @@ VALID_BOOKS = [
 ]
 HISTORY_FILE = "live_predictions.csv"
 
-# 2. CHECKPOINT SYSTEM
+# 2. CHECKPOINT SYSTEM (Saves progress to avoid API crashes)
 def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
     """
     Checks for a local JSON file first. If valid/recent, uses that.
     If not, fetches from API and saves it. 
-    SAVES API CALLS and prevents getting stuck.
     """
     # Check if cache exists and is fresh
     if os.path.exists(filename):
         last_modified = os.path.getmtime(filename)
         if (time.time() - last_modified) < (max_age_hours * 3600):
-            print(f"   📦 Loading {endpoint} from local cache (Saving API credits)...")
+            print(f"   📦 Loading {endpoint} from local cache...")
             try:
                 with open(filename, 'r') as f:
                     return json.load(f)
@@ -42,9 +41,7 @@ def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
     
     for attempt in range(retries):
         try:
-            # Polite pause before request
-            time.sleep(2)
-            
+            time.sleep(2) # Polite pause
             response = requests.get(url, headers=HEADERS, params=params)
             
             if response.status_code == 429:
@@ -70,7 +67,6 @@ def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
     return []
 
 def get_current_week(year, season_type):
-    # We don't cache calendar as it's small, but we use the robust fetcher
     try:
         cal = fetch_with_cache(f"cache_calendar_{year}.json", "/calendar", {"year": year})
         today = datetime.datetime.now().isoformat()
@@ -88,8 +84,7 @@ def get_current_week(year, season_type):
     return 1
 
 def build_decay_lookup(year):
-    print("   -> Fetching Stats (this is the big one)...")
-    # This is the heavy call that usually crashes. Now it will be cached!
+    print("   -> Fetching Stats (cached)...")
     stats = fetch_with_cache(f"cache_stats_{year}.json", "/stats/game/advanced", {"year": year})
     
     if not stats: return {}
@@ -113,7 +108,7 @@ def build_decay_lookup(year):
     return lookup
 
 def main():
-    print("--- 🏈 CFB PREDICTOR (CHECKPOINT MODE) 🏈 ---")
+    print("--- 🏈 CFB PREDICTOR (FINAL STABLE VERSION) 🏈 ---")
     YEAR = 2025
     SEASON_TYPE = "postseason"
     
@@ -130,7 +125,6 @@ def main():
     print(f"   -> Processing {SEASON_TYPE} Week {WEEK}")
 
     # 3. Data Fetching (With Checkpoints)
-    # If any of these fail, run the script again and it will skip the ones that succeeded!
     games_data = fetch_with_cache(f"cache_games_w{WEEK}.json", "/games", {"year": YEAR, "seasonType": SEASON_TYPE, "week": WEEK})
     lines_data = fetch_with_cache(f"cache_lines_w{WEEK}.json", "/lines", {"year": YEAR, "seasonType": SEASON_TYPE, "week": WEEK})
     srs_data = fetch_with_cache(f"cache_srs_{YEAR}.json", "/ratings/srs", {"year": YEAR})
@@ -216,15 +210,27 @@ def main():
                 "Pick_Side": best_total['pick_side'], "Pick_Total": best_total['raw_total']
             })
 
+    # 5. DATABASE MERGE (DUPLICATE PROOF)
     if current_week_preds:
         new_df = pd.DataFrame(current_week_preds)
+        
+        # Ensure New IDs are strict strings
+        new_df['GameID'] = new_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
+        
         if os.path.exists(HISTORY_FILE):
             try:
                 history_df = pd.read_csv(HISTORY_FILE)
+                # Ensure Old IDs are strict strings
+                history_df['GameID'] = history_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
+                
+                # Combine and remove duplicates based on GameID
                 combined_df = pd.concat([new_df, history_df], ignore_index=True)
                 combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
-            except: combined_df = new_df
-        else: combined_df = new_df
+            except:
+                combined_df = new_df
+        else:
+            combined_df = new_df
+
         combined_df.to_csv(HISTORY_FILE, index=False)
         print(f"\n✅ SUCCESS: Updated {HISTORY_FILE} with active games.")
     else:
