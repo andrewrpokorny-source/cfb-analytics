@@ -7,7 +7,7 @@ import time
 import json
 from dotenv import load_dotenv
 
-# 1. SETUP
+# --- 1. SETUP ---
 load_dotenv()
 API_KEY = os.getenv("CFBD_API_KEY")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
@@ -18,75 +18,73 @@ VALID_BOOKS = [
 ]
 HISTORY_FILE = "live_predictions.csv"
 
-# 2. CHECKPOINT SYSTEM (Saves progress to avoid API crashes)
+# TEAM NAME MAPPING (For Auto-Cleaning)
+TEAM_MAP = {
+    "USF": "South Florida",
+    "Ole Miss": "Mississippi",
+    "LSU": "Louisiana State",
+    "UConn": "Connecticut",
+    "UMass": "Massachusetts",
+    "Southern Miss": "Southern Mississippi",
+    "UL Monroe": "Louisiana Monroe",
+    "UL Lafayette": "Louisiana"
+}
+
+# --- 2. CHECKPOINT SYSTEM ---
 def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
     """
-    Checks for a local JSON file first. If valid/recent, uses that.
-    If not, fetches from API and saves it. 
+    Checks for local JSON first. If missing/stale, fetches from API and saves it.
     """
-    # Check if cache exists and is fresh
     if os.path.exists(filename):
         last_modified = os.path.getmtime(filename)
         if (time.time() - last_modified) < (max_age_hours * 3600):
             print(f"   📦 Loading {endpoint} from local cache...")
             try:
-                with open(filename, 'r') as f:
-                    return json.load(f)
-            except:
-                print("      (Cache corrupted, re-fetching...)")
+                with open(filename, 'r') as f: return json.load(f)
+            except: pass
     
-    # If no cache, fetch from API with strict backoff
     url = f"https://api.collegefootballdata.com{endpoint}"
-    retries = 5
+    retries = 3
     
     for attempt in range(retries):
         try:
-            time.sleep(2) # Polite pause
+            time.sleep(1.5) # Polite pause
             response = requests.get(url, headers=HEADERS, params=params)
             
             if response.status_code == 429:
-                wait_time = 60 * (attempt + 1)
-                print(f"   🛑 Rate Limit Hit. Waiting {wait_time}s...")
-                time.sleep(wait_time)
+                time.sleep(60)
                 continue
             
             response.raise_for_status()
             data = response.json()
             
-            # SAVE TO CACHE
-            with open(filename, 'w') as f:
-                json.dump(data, f)
-            
+            with open(filename, 'w') as f: json.dump(data, f)
             return data
             
         except Exception as e:
-            print(f"   ⚠️ Attempt {attempt+1} failed: {e}")
-            time.sleep(5)
+            print(f"   ⚠️ API Error: {e}")
+            time.sleep(2)
             
-    print(f"❌ Failed to fetch {endpoint}")
     return []
 
 def get_current_week(year, season_type):
+    # Simplified week finder
     try:
         cal = fetch_with_cache(f"cache_calendar_{year}.json", "/calendar", {"year": year})
         today = datetime.datetime.now().isoformat()
-        
-        for week_obj in cal:
-            if week_obj['seasonType'] == season_type:
-                if week_obj['firstGameStart'] <= today <= week_obj['lastGameStart']:
-                    return week_obj['week']
-        # Fallback to upcoming
-        for week_obj in cal:
-            if week_obj['seasonType'] == season_type:
-                if week_obj['firstGameStart'] > today:
-                    return week_obj['week']
+        for w in cal:
+            if w['seasonType'] == season_type and w['firstGameStart'] <= today <= w['lastGameStart']:
+                return w['week']
+        # If between weeks, look ahead
+        for w in cal:
+            if w['seasonType'] == season_type and w['firstGameStart'] > today:
+                return w['week']
     except: pass
     return 1
 
 def build_decay_lookup(year):
-    print("   -> Fetching Stats (cached)...")
+    print("   -> Fetching Advanced Stats...")
     stats = fetch_with_cache(f"cache_stats_{year}.json", "/stats/game/advanced", {"year": year})
-    
     if not stats: return {}
     
     df = pd.json_normalize(stats)
@@ -94,7 +92,7 @@ def build_decay_lookup(year):
         df['week'] = pd.to_numeric(df['week'])
         df = df.sort_values(['team', 'season', 'week'])
     
-    metrics = ['offense.ppa', 'offense.successRate', 'offense.explosiveness', 'defense.ppa', 'defense.successRate', 'defense.explosiveness']
+    metrics = ['offense.ppa', 'offense.successRate', 'defense.ppa', 'defense.successRate']
     lookup = {}
     
     for team, group in df.groupby('team'):
@@ -107,24 +105,24 @@ def build_decay_lookup(year):
         lookup[team] = team_mom
     return lookup
 
+# --- 3. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB PREDICTOR (FINAL STABLE VERSION) 🏈 ---")
+    print("--- 🏈 CFB QUANT ENGINE: PREDICT & CLEAN ---")
     YEAR = 2025
     SEASON_TYPE = "postseason"
     
-    # 1. Models
+    # A. Load Models
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
     except: 
-        print("❌ Models not found.")
+        print("❌ Models not found. Ensure .pkl files are present.")
         return
 
-    # 2. Dynamic Week
     WEEK = get_current_week(YEAR, SEASON_TYPE)
-    print(f"   -> Processing {SEASON_TYPE} Week {WEEK}")
+    print(f"   -> Analyizing {SEASON_TYPE} Week {WEEK}...")
 
-    # 3. Data Fetching (With Checkpoints)
+    # B. Fetch Data
     games_data = fetch_with_cache(f"cache_games_w{WEEK}.json", "/games", {"year": YEAR, "seasonType": SEASON_TYPE, "week": WEEK})
     lines_data = fetch_with_cache(f"cache_lines_w{WEEK}.json", "/lines", {"year": YEAR, "seasonType": SEASON_TYPE, "week": WEEK})
     srs_data = fetch_with_cache(f"cache_srs_{YEAR}.json", "/ratings/srs", {"year": YEAR})
@@ -134,70 +132,86 @@ def main():
     talent_map = {x.get('school', x.get('team')): x['talent'] for x in talent_data}
     decay_map = build_decay_lookup(YEAR)
 
-    # 4. Processing
+    # C. Organize Lines
     shopping_cart = {}
     for g in lines_data:
         valid_lines = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
         shopping_cart[g['id']] = valid_lines
 
     current_week_preds = []
-    games = pd.DataFrame(games_data).rename(columns={'homeTeam': 'home_team', 'awayTeam': 'away_team'}).to_dict('records')
-
-    print(f"   -> Generating Predictions for {len(games)} games...")
-
-    for g in games:
-        if g.get('completed'): continue
-        gid = g.get('id')
+    
+    # D. Generate Predictions
+    print(f"   -> Running models on {len(games_data)} games...")
+    for g in games_data:
+        if g.get('completed'): continue # Skip finished games
+        
+        gid = str(g.get('id'))
         home, away = g.get('home_team'), g.get('away_team')
         
-        lines = shopping_cart.get(gid, [])
+        lines = shopping_cart.get(int(gid), [])
         if not lines: continue
         
-        h_d, a_d = decay_map.get(home), decay_map.get(away)
+        h_d = decay_map.get(home)
+        a_d = decay_map.get(away)
         if not h_d or not a_d: continue
 
+        # Build Feature Row
         base_row = {
             'home_talent_score': talent_map.get(home, 10), 'away_talent_score': talent_map.get(away, 10),
             'home_srs_rating': srs_map.get(home, -5), 'away_srs_rating': srs_map.get(away, -5),
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        best_spread = {"conf": -1, "book": "N/A", "pick": "N/A", "raw_spread": 0, "pick_team": ""}
-        best_total = {"conf": -1, "book": "N/A", "pick": "N/A", "raw_total": 0, "pick_side": ""}
+        # Find Best Value
+        best_spread = {"conf": -1, "pick": "N/A", "book": "N/A", "raw_spread": 0, "pick_team": ""}
+        best_total = {"conf": -1, "pick": "N/A", "book": "N/A", "raw_total": 0, "pick_side": ""}
 
         for line in lines:
-            home_spread_val = line.get('spread')
+            home_spread = line.get('spread')
             total_val = line.get('overUnder')
             book = line.get('provider')
 
-            if home_spread_val is not None:
+            if home_spread is not None:
                 row = base_row.copy()
-                row['spread'] = home_spread_val
-                row['overUnder'] = total_val if total_val else 55.0
-                feat_cols = model_spread.feature_names_in_
-                features = pd.DataFrame([row])[feat_cols]
+                row['spread'] = home_spread
+                row['overUnder'] = total_val if total_val else 55.5
+                
+                # Normalize features
+                for col in model_spread.feature_names_in_:
+                    if col not in row: row[col] = 0.0
+                
+                features = pd.DataFrame([row])[model_spread.feature_names_in_]
                 cover_prob = model_spread.predict_proba(features)[0][1]
+                
                 s_conf = max(cover_prob, 1-cover_prob)
                 if s_conf > best_spread['conf']:
-                    if cover_prob > 0.5:
-                        pick_team = home
-                        my_line = home_spread_val 
-                    else:
-                        pick_team = away
-                        my_line = -1 * home_spread_val
-                    fmt_line = f"+{my_line}" if my_line > 0 else f"{my_line}"
-                    best_spread = {"conf": s_conf, "book": book, "pick": f"{pick_team} ({fmt_line})", "raw_spread": home_spread_val, "pick_team": pick_team}
+                    pick_team = home if cover_prob > 0.5 else away
+                    my_line = home_spread if cover_prob > 0.5 else -1 * home_spread
+                    best_spread = {
+                        "conf": s_conf, "book": book, 
+                        "pick": f"{pick_team} ({'+' if my_line > 0 else ''}{my_line})",
+                        "raw_spread": home_spread, "pick_team": pick_team
+                    }
 
             if total_val is not None:
                 row = base_row.copy()
-                row['spread'] = home_spread_val if home_spread_val else 0.0 
+                row['spread'] = home_spread if home_spread else 0.0
                 row['overUnder'] = total_val
-                feat_cols = model_spread.feature_names_in_
-                features = pd.DataFrame([row])[feat_cols]
+                
+                for col in model_total.feature_names_in_:
+                    if col not in row: row[col] = 0.0
+                    
+                features = pd.DataFrame([row])[model_total.feature_names_in_]
                 over_prob = model_total.predict_proba(features)[0][1]
+                
                 t_conf = max(over_prob, 1-over_prob)
                 if t_conf > best_total['conf']:
-                    best_total = {"conf": t_conf, "book": book, "pick": f"{'OVER' if over_prob > 0.5 else 'UNDER'} {total_val}", "raw_total": total_val, "pick_side": "OVER" if over_prob > 0.5 else "UNDER"}
+                    pick_side = "OVER" if over_prob > 0.5 else "UNDER"
+                    best_total = {
+                        "conf": t_conf, "book": book,
+                        "pick": f"{pick_side} {total_val}",
+                        "raw_total": total_val, "pick_side": pick_side
+                    }
 
         if best_spread['conf'] != -1:
             current_week_preds.append({
@@ -210,31 +224,33 @@ def main():
                 "Pick_Side": best_total['pick_side'], "Pick_Total": best_total['raw_total']
             })
 
-    # 5. DATABASE MERGE (DUPLICATE PROOF)
+    # E. MERGE & CLEAN (Consolidated Logic)
     if current_week_preds:
         new_df = pd.DataFrame(current_week_preds)
-        
-        # Ensure New IDs are strict strings
         new_df['GameID'] = new_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         
         if os.path.exists(HISTORY_FILE):
-            try:
-                history_df = pd.read_csv(HISTORY_FILE)
-                # Ensure Old IDs are strict strings
-                history_df['GameID'] = history_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
-                
-                # Combine and remove duplicates based on GameID
-                combined_df = pd.concat([new_df, history_df], ignore_index=True)
-                combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
-            except:
-                combined_df = new_df
+            history_df = pd.read_csv(HISTORY_FILE)
+            history_df['GameID'] = history_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
+            combined_df = pd.concat([new_df, history_df], ignore_index=True)
         else:
             combined_df = new_df
+        
+        # 1. Normalize Team Names (Fixes USF/South Florida)
+        combined_df['HomeTeam'] = combined_df['HomeTeam'].replace(TEAM_MAP)
+        combined_df['AwayTeam'] = combined_df['AwayTeam'].replace(TEAM_MAP)
+        
+        # 2. Drop Duplicates (The "Smart" Way)
+        # We prefer the 'new' prediction if dates match, but keep 'manual' history if present
+        combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
+        
+        # 3. Final Safety Dedup by Team Matchup
+        combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
 
         combined_df.to_csv(HISTORY_FILE, index=False)
-        print(f"\n✅ SUCCESS: Updated {HISTORY_FILE} with active games.")
+        print(f"✅ SUCCESS: Updated database with {len(current_week_preds)} new predictions.")
     else:
-        print("No active games found for this week.")
+        print("   (No active games found to predict)")
 
 if __name__ == "__main__":
     main()
