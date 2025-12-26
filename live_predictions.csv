@@ -1,4 +1,15 @@
 GameID,HomeTeam,AwayTeam,Game,Spread Pick,Spread Book,Spread Conf,Spread_Conf_Raw,Pick_Team,Pick_Line,Total Pick,Total Book,Total Conf,Total_Conf_Raw,Pick_Side,Pick_Total,Manual_Date,Manual_HomeScore,Manual_AwayScore
+MANUAL_v2_20251219_Wes,Western Michigan,Kennesaw State,Kennesaw State @ Western Michigan,Western Michigan (-3.0),Restored_v2,61.3%,0.6126160931951539,Western Michigan,-3.0,UNDER 47.0,Restored_v2,53.7%,0.5368707797499739,UNDER,47.0,2025-12-19,41.0,6.0
+MANUAL_v2_20251219_NC ,NC State,Memphis,Memphis @ NC State,NC State (-6.0),Restored_v2,61.4%,0.6139720441980088,NC State,-6.0,UNDER 56.5,Restored_v2,51.4%,0.5136491395463367,UNDER,56.5,2025-12-19,31.0,7.0
+MANUAL_v2_20251220_Okl,Oklahoma,Alabama,Alabama @ Oklahoma,Oklahoma (-1.5),Restored_v2,59.3%,0.5930849188807474,Oklahoma,-1.5,UNDER 42.0,Restored_v2,55.0%,0.5501368532200916,UNDER,42.0,2025-12-20,24.0,34.0
+MANUAL_v2_20251220_Tex,Texas A&M,Miami,Miami @ Texas A&M,Texas A&M (-3.0),Restored_v2,59.0%,0.5903275754584043,Texas A&M,-3.0,UNDER 48.5,Restored_v2,53.2%,0.5323157947236781,UNDER,48.5,2025-12-20,3.0,10.0
+MANUAL_v2_20251220_Ole,Ole Miss,Tulane,Tulane @ Ole Miss,Ole Miss (-6.5),Restored_v2,61.7%,0.6165572857495686,Ole Miss,-6.5,OVER 55.5,Restored_v2,50.3%,0.5027997836059371,OVER,55.5,2025-12-20,41.0,10.0
+MANUAL_v2_20251220_Ore,Oregon,James Madison,James Madison @ Oregon,Oregon (+2.5),Restored_v2,59.8%,0.5975739320957387,Oregon,2.5,UNDER 52.5,Restored_v2,53.1%,0.5310207775489495,UNDER,52.5,2025-12-20,51.0,34.0
+MANUAL_v2_20251222_Boi,Boise State,Washington State,Washington State @ Boise State,Boise State (-9.5),Restored_v2,58.2%,0.5822145568382444,Boise State,-9.5,UNDER 55.5,Restored_v2,53.2%,0.5321608565045615,UNDER,55.5,2025-12-22,21.0,34.0
+MANUAL_v2_20251223_Lou,Louisville,Toledo,Toledo @ Louisville,Louisville (-12.5),Restored_v2,58.3%,0.5831473747861744,Louisville,-12.5,UNDER 44.5,Restored_v2,50.9%,0.5092353268375662,UNDER,44.5,2025-12-23,27.0,22.0
+MANUAL_v2_20251223_Wes,Western Kentucky,Southern Mississippi,Southern Mississippi @ Western Kentucky,Western Kentucky (-3.0),Restored_v2,58.7%,0.5867841865525935,Western Kentucky,-3.0,UNDER 59.0,Restored_v2,53.0%,0.5304630993948823,UNDER,59.0,2025-12-23,27.0,16.0
+MANUAL_v2_20251223_UNL,UNLV,Ohio,Ohio @ UNLV,UNLV (+6.5),Restored_v2,58.0%,0.580434310202899,UNLV,6.5,UNDER 64.5,Restored_v2,53.0%,0.5296019027354999,UNDER,64.5,2025-12-23,10.0,17.0
+MANUAL_v2_20251224_Haw,Hawaii,California,California @ Hawaii,Hawaii (-1.5),Restored_v2,56.8%,0.567527683123256,Hawaii,-1.5,UNDER 50.5,Restored_v2,54.1%,0.5407422801029549,UNDER,50.5,2025-12-24,35.0,31.0
 401778313,Northwestern,Central Michigan,Central Michigan @ Northwestern,Central Michigan (+10.5),DraftKings,50.5%,0.504904784038698,Central Michigan,-10.5,OVER 42.5,DraftKings,57.1%,0.5708199445575365,OVER,42.5,,,
 401778314,Minnesota,New Mexico,New Mexico @ Minnesota,New Mexico (+1.5),DraftKings,53.8%,0.5381751012853504,New Mexico,-1.5,OVER 42.5,DraftKings,52.8%,0.528307582099597,OVER,42.5,,,
 401778315,UTSA,Florida International,Florida International @ UTSA,UTSA (-5.5),DraftKings,55.8%,0.5578987715827131,UTSA,-5.5,UNDER 60.5,DraftKings,51.8%,0.5181070252755389,UNDER,60.5,,,
@@ -20,24 +31,19 @@ GameID,HomeTeam,AwayTeam,Game,Spread Pick,Spread Book,Spread Conf,Spread_Conf_Ra
 401778331,Utah,Nebraska,Nebraska @ Utah,Nebraska (+15.5),DraftKings,50.5%,0.5050926348822742,Nebraska,-15.5,OVER 50.5,DraftKings,51.2%,0.5120795056799323,OVER,50.5,,,
 401769070,Ohio State,Miami,Miami @ Ohio State,Miami (+9.5),DraftKings,56.6%,0.5655068779751702,Miami,-9.5,UNDER 42.5,DraftKings,53.6%,0.5360703212880682,UNDER,42.5,,,
 401769071,Texas Tech,Oregon,Oregon @ Texas Tech,Oregon (-2.5),DraftKings,50.3%,0.5031256040942675,Oregon,2.5,UNDER 52.5,DraftKings,57.0%,0.5700506600769347,UNDER,52.5,,,
-401769072,Indiana,Alabama,Alabama @ Indiana,Indiana (-6.5),DraftKings,52.2%,0.5223711286031643,Indiana,-6.5,N/A,N/A,-100.0%,-1.0,,0.0,,,
+401769072,Indiana,Alabama,Alabama @ Indiana,Indiana (-6.5),DraftKings,52.2%,0.5223711286031643,Indiana,-6.5,,,-100.0%,-1.0,,0.0,,,
 401769073,Georgia,Ole Miss,Ole Miss @ Georgia,Ole Miss (+6.5),DraftKings,53.9%,0.539198598647129,Ole Miss,-6.5,UNDER 55.5,DraftKings,50.5%,0.5048800562059578,UNDER,55.5,,,
 401778332,Texas State,Rice,Rice @ Texas State,Texas State (-11.5),DraftKings,54.4%,0.5437893824007771,Texas State,-11.5,UNDER 59.5,DraftKings,51.1%,0.5112618350516591,UNDER,59.5,,,
 401778333,Cincinnati,Navy,Navy @ Cincinnati,Navy (-7),DraftKings,50.6%,0.5056665539812994,Navy,7.0,UNDER 54.5,DraftKings,51.4%,0.5141701867199027,UNDER,54.5,,,
 401778334,Mississippi State,Wake Forest,Wake Forest @ Mississippi State,Wake Forest (+3.5),DraftKings,50.9%,0.5086104587713292,Wake Forest,-3.5,UNDER 53.5,DraftKings,51.5%,0.5145903503259339,UNDER,53.5,,,
 401831583,SMU,Arizona,Arizona @ SMU,SMU (+3),DraftKings,53.7%,0.53651576261704,SMU,3.0,UNDER 51.5,DraftKings,57.4%,0.5743472850726745,UNDER,51.5,,,
 401778308,Utah State,Washington State,Washington State @ Utah State,Utah State (-1.5),DraftKings,50.3%,0.5028388574855756,Utah State,-1.5,UNDER 49.5,DraftKings,55.6%,0.5563582994280203,UNDER,49.5,,,
-401778309,Louisville,Toledo,Toledo @ Louisville,Louisville (-7),DraftKings,51.4%,0.5143651993059024,Louisville,-7.0,UNDER 44.5,DraftKings,57.8%,0.5778832699898577,UNDER,44.5,,,
 401778310,Southern Miss,Western Kentucky,Western Kentucky @ Southern Miss,Southern Miss (+1.5),DraftKings,50.4%,0.5039926239489865,Southern Miss,1.5,UNDER 58.5,DraftKings,53.2%,0.5320152962710736,UNDER,58.5,,,
 401778311,Ohio,UNLV,UNLV @ Ohio,Ohio (+6.5),DraftKings,50.1%,0.5005396339425567,Ohio,6.5,UNDER 65.5,DraftKings,52.8%,0.5275203640834683,UNDER,65.5,,,
 401778312,Hawai'i,California,California @ Hawai'i,Hawai'i (-1.5),DraftKings,52.1%,0.5211155341015707,Hawai'i,-1.5,UNDER 52.5,DraftKings,55.1%,0.5514425678288286,UNDER,52.5,,,
 MANUAL_20251219_Wes,Western Kentucky,Sam Houston State,Sam Houston State @ Western Kentucky,Sam Houston State (-2.5),Restored,50.5%,0.5047262794040726,Sam Houston State,2.5,OVER 57.5,Restored,51.0%,0.5096892338877668,OVER,57.5,2025-12-19,41.0,28.0
-401779843,Oregon,James Madison,James Madison @ Oregon,James Madison (+20.5),DraftKings,50.8%,0.5082717349120763,James Madison,-20.5,UNDER 47.5,DraftKings,63.3%,0.632560284569824,UNDER,47.5,,,
-401779841,Texas A&M,Miami,Miami @ Texas A&M,Miami (+3),DraftKings,57.2%,0.5719226424743566,Miami,-3.0,UNDER 48.5,DraftKings,55.1%,0.5513241960044274,UNDER,48.5,,,
 401779842,Mississippi,Tulane,Tulane @ Ole Miss,Ole Miss (-17.5),DraftKings,51.7%,0.517013273508487,Ole Miss,-17.5,UNDER 57.5,DraftKings,55.7%,0.5569054425794848,UNDER,57.5,,,
 401833989,Montana State,Montana,Montana @ Montana State,Montana (+4.5),Bovada,50.8%,0.5081522706459252,Montana,-4.5,OVER 55.5,Bovada,52.1%,0.520627119010908,OVER,55.5,,,
-401778307,NC State,Memphis,Memphis @ NC State,Memphis (+6),Bovada,50.9%,0.5093237309352219,Memphis,-6.0,OVER 56.5,DraftKings,55.0%,0.5501571586747324,OVER,56.5,,,
-401779840,Oklahoma,Alabama,Alabama @ Oklahoma,Oklahoma (-1),Bovada,51.4%,0.5143429541129546,Oklahoma,-1.0,UNDER 40.5,DraftKings,53.3%,0.5325826522577413,UNDER,40.5,,,
 999001,Jacksonville State,Kennesaw State,Kennesaw State @ Jacksonville State,Kennesaw St (+2.5),Backfill,58.0%,0.58,Kennesaw St,2.5,OVER 55.5,Backfill,51.7%,0.5171111653361335,OVER,55.5,2025-12-05,15.0,19.0
 999002,JMU,Troy,Troy @ JMU,JMU (-23.5),Backfill,52.0%,0.52,JMU,-23.5,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-05,31.0,14.0
 999003,Boise State,UNLV,UNLV @ Boise State,Boise State (-5.5),Backfill,65.0%,0.65,Boise State,-5.5,UNDER 55.5,Backfill,51.3%,0.5126314551125807,UNDER,55.5,2025-12-05,56.0,31.0
@@ -52,5 +58,4 @@ MANUAL_20251219_Wes,Western Kentucky,Sam Houston State,Sam Houston State @ Weste
 999012,South Florida,Old Dominion,Old Dominion @ USF,USF (-3.0),Backfill,60.0%,0.6,USF,-3.0,UNDER 55.5,Backfill,52.0%,0.52,UNDER,55.5,2025-12-17,10.0,24.0
 999013,Louisiana,Delaware,Delaware @ Louisiana,Delaware (+2.5),Backfill,56.0%,0.56,Delaware,2.5,OVER 55.5,Backfill,55.8%,0.5581098180794053,OVER,55.5,2025-12-17,13.0,20.0
 999014,Arkansas State,Missouri State,Missouri State @ Arkansas State,Arkansas St (-2.5),Backfill,58.0%,0.58,Arkansas St,-2.5,OVER 55.5,Backfill,51.5%,0.5149330704418456,OVER,55.5,2025-12-18,34.0,28.0
-401778306,Western Michigan,Kennesaw State,Kennesaw State @ Western Michigan,Western Michigan (-3.5),DraftKings,51.4%,0.5138373674451969,Western Michigan,-3.5,UNDER 47.5,DraftKings,50.2%,0.5021089322171053,UNDER,47.5,,,
-nan,,,Kennesaw State @ Western Michigan,Western Michigan (-3.5),DraftKings,51.4%,0.5138373674451969,,,UNDER 47.5,DraftKings,50.2%,0.5021089322171053,,,,,
+,,,Kennesaw State @ Western Michigan,Western Michigan (-3.5),DraftKings,51.4%,0.5138373674451969,,,UNDER 47.5,DraftKings,50.2%,0.5021089322171053,,,,,
