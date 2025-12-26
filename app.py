@@ -3,20 +3,16 @@ import pandas as pd
 import requests
 from datetime import datetime, timezone
 
-# --- 1. SETUP & CONFIG ---
-st.set_page_config(page_title="CFB Quant Engine", page_icon="📈", layout="wide")
-st.title("📈 CFB Quant Engine: Trading Terminal")
-
-# Constants for "Smart" Math
-# -110 odds implies a 52.38% break-even point.
-# If our model is >52.38%, we have a mathematical "Edge" (Positive EV).
-BREAK_EVEN_PROB = 0.5238
+# --- 1. SETUP & REBRANDING ---
+st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
+st.title("🏈 CFB Quant Engine")
 
 @st.cache_data(ttl=300) 
 def fetch_scores():
     try:
         api_key = st.secrets["CFBD_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}"}
+        
         res_reg = requests.get("https://api.collegefootballdata.com/games", 
                                headers=headers, params={"year": 2025, "seasonType": "regular"})
         res_post = requests.get("https://api.collegefootballdata.com/games", 
@@ -27,14 +23,16 @@ def fetch_scores():
             for g in res_reg.json(): games_dict[str(g['id'])] = g
         if res_post.status_code == 200:
             for g in res_post.json(): games_dict[str(g['id'])] = g
+                
         return games_dict
     except:
         return {}
 
 @st.cache_data(ttl=0)
-def load_data():
+def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
+        # Clean up GameID column
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -42,28 +40,14 @@ def load_data():
     except:
         return pd.DataFrame()
 
-# --- 2. QUANT LOGIC (EV Only) ---
-def calculate_ev(confidence_str):
-    """
-    Parses confidence string and calculates Edge.
-    Edge = Model Probability - Break Even Probability (52.38%)
-    """
-    try:
-        prob = float(confidence_str.strip('%')) / 100.0
-    except:
-        return 0.0, 0.0
-
-    # Calculate Edge (How much better is this bet than a coin flip?)
-    edge = prob - BREAK_EVEN_PROB
-    
-    return prob, edge
-
-# --- 3. PROCESSING LOOP ---
-df = load_data()
+df = load_picks()
 scores = fetch_scores()
-graded_results = []
-active_plays = []
 
+# --- 2. PROCESSING LOOP ---
+graded_results = []
+upcoming_games = []
+
+# Get current time in UTC to filter out past games
 now_utc = datetime.now(timezone.utc)
 
 if not df.empty:
@@ -71,16 +55,18 @@ if not df.empty:
         gid = str(row.get("GameID"))
         game = scores.get(gid)
         
-        # Determine Status
         is_completed = False
-        home_score, away_score = 0, 0
+        home_score = 0
+        away_score = 0
         date_str = "N/A"
-        
+
+        # --- A. DETERMINE STATUS (API vs MANUAL) ---
         if game and game.get('status') == 'completed':
             is_completed = True
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
+        
         elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
             try:
                 if float(row['Manual_HomeScore']) >= 0:
@@ -88,110 +74,127 @@ if not df.empty:
                     home_score = int(float(row['Manual_HomeScore']))
                     away_score = int(float(row['Manual_AwayScore']))
                     date_str = str(row.get('Manual_Date', 'N/A'))
-            except: pass
+            except: 
+                pass
 
-        # --- PATH A: HISTORY (GRADED) ---
+        # --- B. GRADING LOGIC ---
         if is_completed:
+            # Spread Result
             pick_team = row['Pick_Team']
-            try: line = float(row['Pick_Line'])
-            except: line = 0.0
+            try: raw_home_spread = float(row['Pick_Line'])
+            except: raw_home_spread = 0.0
             
-            margin = (home_score - away_score) if pick_team == row['HomeTeam'] else (away_score - home_score)
-            diff = margin + line
-            res = "WIN" if diff > 0 else "LOSS" if diff < 0 else "PUSH"
+            if pick_team == row['HomeTeam']:
+                margin = (home_score - away_score) + raw_home_spread
+            else:
+                margin = (away_score - home_score) - raw_home_spread
             
+            if margin == 0: spread_res = "PUSH"
+            elif margin > 0: spread_res = "WIN"
+            else: spread_res = "LOSS"
+
+            # Total Result
+            total_res = "N/A"
+            pick_side = row.get('Pick_Side')
+            try: pick_total = float(row.get('Pick_Total', 0))
+            except: pick_total = 0.0
+            
+            if pick_total > 0:
+                total_score = home_score + away_score
+                if total_score == pick_total: total_res = "PUSH"
+                elif pick_side == "OVER": total_res = "WIN" if total_score > pick_total else "LOSS"
+                else: total_res = "WIN" if total_score < pick_total else "LOSS"
+
             graded_results.append({
-                "Date": date_str,
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
-                "Pick": row['Spread Pick'],
-                "Result": res
+                "Date": date_str,
+                "Spread Forecast": f"{row['Spread Pick']}", 
+                "Spread Result": spread_res,
+                "Total Forecast": f"{row['Total Pick']}",   
+                "Total Result": total_res
             })
-            
-        # --- PATH B: ACTIVE (QUANT ANALYSIS) ---
+        
+        # --- C. UPCOMING GAMES ---
         else:
-            start_str = game.get('start_date') if game else None
-            show_game = True
-            time_display = "TBD"
-            kickoff_sort = "2099-12-31"
+            new_row = row.copy()
+            start_str = None
+            if game:
+                start_str = game.get('start_date') or game.get('startDate')
             
+            show_game = True
             if start_str:
-                kickoff_sort = start_str
+                new_row['Kickoff_Sort'] = start_str
                 try:
                     dt = pd.to_datetime(start_str)
                     if dt.tzinfo is None: dt = dt.tz_localize('UTC')
                     if dt < now_utc: show_game = False
-                    time_display = dt.tz_convert('US/Eastern').strftime('%a %I:%M %p')
-                except: pass
-
+                    dt_et = dt.tz_convert('US/Eastern')
+                    new_row['Time'] = dt_et.strftime('%a %I:%M %p')
+                except: 
+                    new_row['Time'] = "Date Error"
+            else:
+                new_row['Kickoff_Sort'] = "2099-12-31"
+                new_row['Time'] = "Date Missing" if game else "TBD"
+            
             if show_game:
-                # Calculate Metrics (No Kelly, just EV)
-                s_prob, s_edge = calculate_ev(row['Spread Conf'])
-                t_prob, t_edge = calculate_ev(row['Total Conf'])
-                
-                # SPREAD ENTRY
-                active_plays.append({
-                    "Time": time_display, "Sort": kickoff_sort,
-                    "Game": row['Game'],
-                    "Type": "Spread",
-                    "Pick": row['Spread Pick'],
-                    "Model %": s_prob,
-                    "Edge": s_edge
-                })
-                # TOTAL ENTRY
-                active_plays.append({
-                    "Time": time_display, "Sort": kickoff_sort,
-                    "Game": row['Game'],
-                    "Type": "Total",
-                    "Pick": row['Total Pick'],
-                    "Model %": t_prob,
-                    "Edge": t_edge
-                })
+                new_row['Source'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov")
+                upcoming_games.append(new_row)
 
-# --- 4. DISPLAY UI ---
-tab1, tab2 = st.tabs(["💎 Value Board (Quant)", "📜 History"])
+# --- 3. UI DISPLAY ---
+tab1, tab2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"])
 
 with tab1:
-    st.markdown("### ⚡ Positive EV Opportunities")
-    st.caption("Filters: Only showing plays where the Model Probability > 52.4% (Positive Expected Value vs -110 odds).")
-    
-    if active_plays:
-        q_df = pd.DataFrame(active_plays)
-        
-        # FILTER: Strict +EV only (Edge > 0)
-        ev_df = q_df[q_df['Edge'] > 0].copy()
-        
-        if not ev_df.empty:
-            ev_df = ev_df.sort_values(by=['Edge', 'Sort'], ascending=[False, True])
-            
-            # Formatting
-            ev_df['Model %'] = ev_df['Model %'].map('{:.1%}'.format)
-            ev_df['Edge'] = ev_df['Edge'].map('{:.2%}'.format)
-            
-            def color_edge(val):
-                # Green intensity based on value
-                try: score = float(val.strip('%'))
-                except: return ''
-                if score > 5.0: return 'background-color: #1b5e20; color: white' # Huge Value (>5% edge)
-                if score > 2.5: return 'background-color: #2e7d32; color: white' # Great Value (>2.5% edge)
-                if score > 0.0: return 'background-color: #e8f5e9; color: black' # Marginal Value (>0% edge)
-                return ''
+    st.markdown("### 📅 Active Model Outputs")
+    def color_confidence(val):
+        try: score = float(val.strip('%'))
+        except: return ''
+        if score >= 60.0: return 'background-color: #2e7d32; color: white'
+        elif score >= 55.0: return 'background-color: #4caf50; color: black'
+        elif score <= 52.5: return 'background-color: #ef5350; color: white'
+        return ''
 
-            st.dataframe(
-                ev_df[['Time', 'Game', 'Type', 'Pick', 'Model %', 'Edge']].style.map(color_edge, subset=['Edge']), 
-                hide_index=True, 
-                use_container_width=True
-            )
-        else:
-            st.warning("⚠️ No +EV plays found. The model does not see an edge in the current lines (all confidence < 52.4%).")
-            with st.expander("Show all raw predictions (Negative EV)"):
-                st.dataframe(q_df[['Time', 'Game', 'Type', 'Pick', 'Model %', 'Edge']])
-            
+    if upcoming_games:
+        up_df = pd.DataFrame(upcoming_games)
+        if 'Kickoff_Sort' in up_df.columns:
+            up_df = up_df.sort_values(by=['Kickoff_Sort', 'Spread_Conf_Raw'], ascending=[True, False])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.caption("Spread Model")
+            st.dataframe(up_df[['Time', 'Game', 'Source', 'Spread Pick', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']), hide_index=True, use_container_width=True)
+        with col2:
+            st.caption("Totals Model")
+            st.dataframe(up_df[['Time', 'Game', 'Source', 'Total Pick', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']), hide_index=True, use_container_width=True)
     else:
-        st.info("No active games.")
+        st.info("No upcoming games found. (All active games are in progress or completed)")
 
 with tab2:
     if graded_results:
-        h_df = pd.DataFrame(graded_results)
-        st.dataframe(h_df, hide_index=True, use_container_width=True)
+        res_df = pd.DataFrame(graded_results)
+        res_df = res_df.sort_values(by='Date', ascending=False)
+        
+        s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
+        s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
+        s_total = s_wins + s_loss
+        s_pct = (s_wins / s_total * 100) if s_total > 0 else 0.0
+        
+        t_wins = len(res_df[res_df['Total Result'] == 'WIN'])
+        t_loss = len(res_df[res_df['Total Result'] == 'LOSS'])
+        t_total = t_wins + t_loss
+        t_pct = (t_wins / t_total * 100) if t_total > 0 else 0.0
+
+        st.markdown("### 📊 Model Accuracy")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}%")
+        m2.metric("Total Record", f"{t_wins}-{t_loss}", f"{t_pct:.1f}%")
+        m3.metric("Graded Games", len(res_df))
+        
+        st.divider()
+        def color_history(val):
+            if val == "WIN": return 'color: green; font-weight: bold'
+            if val == "LOSS": return 'color: red; font-weight: bold'
+            return 'color: gray'
+
+        st.dataframe(res_df.style.map(color_history, subset=['Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
     else:
-        st.info("History empty.")
+        st.info("History will populate as games finish.")
