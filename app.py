@@ -3,10 +3,10 @@ import pandas as pd
 import requests
 from datetime import datetime, timezone
 
+# --- 1. SETUP & REBRANDING ---
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
-st.title("🏈 CFB Algorithmic Betting Engine")
+st.title("🏈 CFB Quant Engine")
 
-# --- 1. SETUP & DATA LOADING ---
 @st.cache_data(ttl=300) 
 def fetch_scores():
     try:
@@ -61,14 +61,12 @@ if not df.empty:
         date_str = "N/A"
 
         # --- A. DETERMINE STATUS (API vs MANUAL) ---
-        # 1. Check API first
         if game and game.get('status') == 'completed':
             is_completed = True
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
         
-        # 2. If API fails, check Manual Injection
         elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
             try:
                 if float(row['Manual_HomeScore']) >= 0:
@@ -110,9 +108,9 @@ if not df.empty:
             graded_results.append({
                 "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
                 "Date": date_str,
-                "Spread Bet": f"{row['Spread Pick']}",
+                "Spread Forecast": f"{row['Spread Pick']}", # Renamed from "Spread Bet"
                 "Spread Result": spread_res,
-                "Total Bet": f"{row['Total Pick']}",
+                "Total Forecast": f"{row['Total Pick']}",   # Renamed from "Total Bet"
                 "Total Result": total_res
             })
         
@@ -123,18 +121,13 @@ if not df.empty:
             if game:
                 start_str = game.get('start_date') or game.get('startDate')
             
-            # DATE PARSING & FILTERING
             show_game = True
             if start_str:
                 new_row['Kickoff_Sort'] = start_str
                 try:
                     dt = pd.to_datetime(start_str)
                     if dt.tzinfo is None: dt = dt.tz_localize('UTC')
-                    
-                    # TIME FILTER: Hide if already started
-                    if dt < now_utc:
-                        show_game = False
-                    
+                    if dt < now_utc: show_game = False
                     dt_et = dt.tz_convert('US/Eastern')
                     new_row['Time'] = dt_et.strftime('%a %I:%M %p')
                 except: 
@@ -144,14 +137,14 @@ if not df.empty:
                 new_row['Time'] = "Date Missing" if game else "TBD"
             
             if show_game:
-                new_row['Book'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov").replace("FanDuel", "FD")
+                new_row['Source'] = str(row.get('Spread Book', '')).replace("DraftKings", "DK").replace("Bovada", "Bov")
                 upcoming_games.append(new_row)
 
 # --- 3. UI DISPLAY ---
-tab1, tab2 = st.tabs(["🔮 Betting Board", "📜 Performance History"])
+tab1, tab2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"]) # Renamed Tabs
 
 with tab1:
-    st.markdown("### 📅 Active & Upcoming Games")
+    st.markdown("### 📅 Active Model Outputs")
     def color_confidence(val):
         try: score = float(val.strip('%'))
         except: return ''
@@ -167,11 +160,11 @@ with tab1:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.caption("Spread Picks")
-            st.dataframe(up_df[['Time', 'Game', 'Book', 'Spread Pick', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']), hide_index=True, use_container_width=True)
+            st.caption("Spread Model")
+            st.dataframe(up_df[['Time', 'Game', 'Source', 'Spread Pick', 'Spread Conf']].style.map(color_confidence, subset=['Spread Conf']), hide_index=True, use_container_width=True)
         with col2:
-            st.caption("Totals Picks")
-            st.dataframe(up_df[['Time', 'Game', 'Book', 'Total Pick', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']), hide_index=True, use_container_width=True)
+            st.caption("Totals Model")
+            st.dataframe(up_df[['Time', 'Game', 'Source', 'Total Pick', 'Total Conf']].style.map(color_confidence, subset=['Total Conf']), hide_index=True, use_container_width=True)
     else:
         st.info("No upcoming games found. (All active games are in progress or completed)")
 
@@ -190,7 +183,7 @@ with tab2:
         t_total = t_wins + t_loss
         t_pct = (t_wins / t_total * 100) if t_total > 0 else 0.0
 
-        st.markdown("### 📊 ROI Tracker")
+        st.markdown("### 📊 Model Accuracy")
         m1, m2, m3 = st.columns(3)
         m1.metric("Spread Record", f"{s_wins}-{s_loss}", f"{s_pct:.1f}%")
         m2.metric("Total Record", f"{t_wins}-{t_loss}", f"{t_pct:.1f}%")
