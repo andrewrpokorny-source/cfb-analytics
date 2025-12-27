@@ -1,27 +1,27 @@
 GameID,HomeTeam,AwayTeam,Game,StartDate,Moneyline Pick,Moneyline Conf,Spread Pick,Spread Conf,Total Pick,Total Conf,Pick_Team,Pick_Line,Pick_Side,Pick_Total
-401778316,East Carolina,Pittsburgh,Pittsburgh @ East Carolina,2025-12-27T16:00:00.000Z,Pittsburgh,72.2%,East Carolina (12.5),58.0%,OVER 51.5,54.0%,East Carolina,12.5,OVER,51.5
-401778317,Clemson,Penn State,Penn State @ Clemson,2025-12-27T17:00:00.000Z,Penn State,74.0%,Clemson (-2.5),57.3%,UNDER 47.5,51.4%,Clemson,-2.5,UNDER,47.5
-401778318,Army,UConn,UConn @ Army,2025-12-27T19:15:00.000Z,UConn,65.5%,Army (-8.5),54.1%,OVER 41.5,50.3%,Army,-8.5,OVER,41.5
-401778319,BYU,Georgia Tech,Georgia Tech @ BYU,2025-12-27T20:30:00.000Z,BYU,73.5%,BYU (-3.5),60.7%,OVER 55.5,51.3%,BYU,-3.5,OVER,55.5
-401778320,Fresno State,Miami (OH),Miami (OH) @ Fresno State,2025-12-27T21:30:00.000Z,Fresno State,51.2%,Fresno State (-4.5),57.3%,OVER 40.5,57.1%,Fresno State,-4.5,OVER,40.5
-401778321,San Diego State,North Texas,North Texas @ San Diego State,2025-12-27T22:45:00.000Z,North Texas,72.0%,San Diego State (7),58.0%,OVER 52.5,52.0%,San Diego State,7.0,OVER,52.5
-401778322,Missouri,Virginia,Virginia @ Missouri,2025-12-28T00:30:00.000Z,Missouri,61.4%,Missouri (-4),59.8%,OVER 43.5,54.5%,Missouri,-4.0,OVER,43.5
-401778323,Houston,LSU,LSU @ Houston,2025-12-28T02:15:00.000Z,LSU,62.5%,Houston (-1.5),59.1%,OVER 41.5,53.5%,Houston,-1.5,OVER,41.5
-401778324,App State,Georgia Southern,Georgia Southern @ App State,2025-12-29T19:00:00.000Z,Georgia Southern,52.7%,App State (8.5),58.4%,UNDER 59.5,50.5%,App State,8.5,UNDER,59.5
-401778325,Louisiana Tech,Coastal Carolina,Coastal Carolina @ Louisiana Tech,2025-12-30T19:00:00.000Z,Louisiana Tech,73.4%,Louisiana Tech (-9.5),58.9%,OVER 51.5,50.9%,Louisiana Tech,-9.5,OVER,51.5
-401778326,Illinois,Tennessee,Tennessee @ Illinois,2025-12-30T22:30:00.000Z,Tennessee,53.4%,Illinois (2.5),60.0%,UNDER 61.5,50.4%,Illinois,2.5,UNDER,61.5
-401778327,TCU,USC,USC @ TCU,2025-12-31T02:00:00.000Z,USC,76.6%,TCU (6.5),56.1%,OVER 55.5,52.8%,TCU,6.5,OVER,55.5
-401778328,Vanderbilt,Iowa,Iowa @ Vanderbilt,2025-12-31T17:00:00.000Z,Vanderbilt,61.4%,Vanderbilt (-4.5),59.3%,OVER 46.5,56.1%,Vanderbilt,-4.5,OVER,46.5
-401778329,Duke,Arizona State,Arizona State @ Duke,2025-12-31T19:00:00.000Z,Arizona State,57.8%,Duke (-3),57.5%,OVER 49.5,53.7%,Duke,-3.0,OVER,49.5
-401778330,Texas,Michigan,Michigan @ Texas,2025-12-31T20:00:00.000Z,Michigan,50.9%,Texas (-8.5),58.2%,UNDER 48.5,53.4%,Texas,-8.5,UNDER,48.5
-401778331,Utah,Nebraska,Nebraska @ Utah,2025-12-31T20:30:00.000Z,Utah,91.6%,Utah (-14),57.7%,OVER 50.5,54.2%,Utah,-14.0,OVER,50.5
-401769070,Ohio State,Miami,Miami @ Ohio State,2026-01-01T00:30:00.000Z,Ohio State,72.6%,Ohio State (-9.5),54.3%,UNDER 42.5,50.8%,Ohio State,-9.5,UNDER,42.5
-401769071,Texas Tech,Oregon,Oregon @ Texas Tech,2026-01-01T17:00:00.000Z,Oregon,52.4%,Texas Tech (2.5),54.6%,OVER 52.5,50.7%,Texas Tech,2.5,OVER,52.5
-401769072,Indiana,Alabama,Alabama @ Indiana,2026-01-01T21:00:00.000Z,Indiana,80.8%,Indiana (-6.5),59.5%,Pending,0.0%,Indiana,-6.5,,
-401769073,Georgia,Ole Miss,Ole Miss @ Georgia,2026-01-02T01:00:00.000Z,Georgia,56.8%,Georgia (-6.5),56.9%,UNDER 55.5,54.2%,Georgia,-6.5,UNDER,55.5
-401778332,Texas State,Rice,Rice @ Texas State,2026-01-02T18:00:00.000Z,Texas State,82.5%,Texas State (-11.5),58.2%,UNDER 59.5,54.1%,Texas State,-11.5,UNDER,59.5
-401778333,Cincinnati,Navy,Navy @ Cincinnati,2026-01-02T21:30:00.000Z,Cincinnati,76.5%,Cincinnati (7),59.9%,UNDER 54.5,51.7%,Cincinnati,7.0,UNDER,54.5
-401778334,Mississippi State,Wake Forest,Wake Forest @ Mississippi State,2026-01-03T01:00:00.000Z,Mississippi State,55.7%,Mississippi State (-3.5),57.0%,OVER 53.5,50.3%,Mississippi State,-3.5,OVER,53.5
-401831583,SMU,Arizona,Arizona @ SMU,2026-01-03T01:00:00.000Z,Arizona,58.0%,SMU (3),58.1%,OVER 51.5,54.3%,SMU,3.0,OVER,51.5
+401778316,East Carolina,Pittsburgh,Pittsburgh @ East Carolina,2025-12-27T16:00:00.000Z,Pittsburgh,72.2%,East Carolina (12.5),54.0%,OVER 51.5,50.8%,East Carolina,12.5,OVER,51.5
+401778317,Clemson,Penn State,Penn State @ Clemson,2025-12-27T17:00:00.000Z,Penn State,74.0%,Penn State (2.5),54.7%,UNDER 47.5,50.3%,Penn State,2.5,UNDER,47.5
+401778318,Army,UConn,UConn @ Army,2025-12-27T19:15:00.000Z,UConn,65.5%,UConn (8.5),54.9%,OVER 41.5,51.3%,UConn,8.5,OVER,41.5
+401778319,BYU,Georgia Tech,Georgia Tech @ BYU,2025-12-27T20:30:00.000Z,BYU,73.5%,BYU (-3.5),58.4%,UNDER 55.5,52.8%,BYU,-3.5,UNDER,55.5
+401778320,Fresno State,Miami (OH),Miami (OH) @ Fresno State,2025-12-27T21:30:00.000Z,Fresno State,51.2%,Fresno State (-4.5),52.8%,OVER 40.5,64.3%,Fresno State,-4.5,OVER,40.5
+401778321,San Diego State,North Texas,North Texas @ San Diego State,2025-12-27T22:45:00.000Z,North Texas,72.0%,San Diego State (7),53.0%,UNDER 52.5,50.7%,San Diego State,7.0,UNDER,52.5
+401778322,Missouri,Virginia,Virginia @ Missouri,2025-12-28T00:30:00.000Z,Missouri,61.4%,Missouri (-4),52.7%,OVER 43.5,53.0%,Missouri,-4.0,OVER,43.5
+401778323,Houston,LSU,LSU @ Houston,2025-12-28T02:15:00.000Z,LSU,62.5%,Houston (-1.5),53.4%,OVER 41.5,51.4%,Houston,-1.5,OVER,41.5
+401778324,App State,Georgia Southern,Georgia Southern @ App State,2025-12-29T19:00:00.000Z,Georgia Southern,52.7%,App State (8.5),53.6%,UNDER 59.5,51.1%,App State,8.5,UNDER,59.5
+401778325,Louisiana Tech,Coastal Carolina,Coastal Carolina @ Louisiana Tech,2025-12-30T19:00:00.000Z,Louisiana Tech,73.4%,Louisiana Tech (-9.5),52.8%,UNDER 51.5,52.1%,Louisiana Tech,-9.5,UNDER,51.5
+401778326,Illinois,Tennessee,Tennessee @ Illinois,2025-12-30T22:30:00.000Z,Tennessee,53.4%,Illinois (2.5),57.2%,UNDER 61.5,53.1%,Illinois,2.5,UNDER,61.5
+401778327,TCU,USC,USC @ TCU,2025-12-31T02:00:00.000Z,USC,76.6%,TCU (6.5),51.1%,UNDER 55.5,53.1%,TCU,6.5,UNDER,55.5
+401778328,Vanderbilt,Iowa,Iowa @ Vanderbilt,2025-12-31T17:00:00.000Z,Vanderbilt,61.4%,Vanderbilt (-4.5),54.1%,OVER 46.5,55.4%,Vanderbilt,-4.5,OVER,46.5
+401778329,Duke,Arizona State,Arizona State @ Duke,2025-12-31T19:00:00.000Z,Arizona State,57.8%,Duke (-3),51.0%,UNDER 49.5,52.1%,Duke,-3.0,UNDER,49.5
+401778330,Texas,Michigan,Michigan @ Texas,2025-12-31T20:00:00.000Z,Michigan,50.9%,Texas (-8.5),52.1%,UNDER 48.5,54.0%,Texas,-8.5,UNDER,48.5
+401778331,Utah,Nebraska,Nebraska @ Utah,2025-12-31T20:30:00.000Z,Utah,91.6%,Utah (-14),57.3%,UNDER 50.5,51.8%,Utah,-14.0,UNDER,50.5
+401769070,Ohio State,Miami,Miami @ Ohio State,2026-01-01T00:30:00.000Z,Ohio State,72.6%,Miami (9.5),52.1%,UNDER 42.5,52.3%,Miami,9.5,UNDER,42.5
+401769071,Texas Tech,Oregon,Oregon @ Texas Tech,2026-01-01T17:00:00.000Z,Oregon,52.4%,Oregon (-2.5),56.5%,UNDER 52.5,58.0%,Oregon,-2.5,UNDER,52.5
+401769072,Indiana,Alabama,Alabama @ Indiana,2026-01-01T21:00:00.000Z,Indiana,80.8%,Indiana (-6.5),53.7%,Pending,0.0%,Indiana,-6.5,,
+401769073,Georgia,Ole Miss,Ole Miss @ Georgia,2026-01-02T01:00:00.000Z,Georgia,56.8%,Georgia (-6.5),53.1%,UNDER 55.5,55.4%,Georgia,-6.5,UNDER,55.5
+401778332,Texas State,Rice,Rice @ Texas State,2026-01-02T18:00:00.000Z,Texas State,82.5%,Texas State (-11.5),53.1%,UNDER 59.5,52.2%,Texas State,-11.5,UNDER,59.5
+401778333,Cincinnati,Navy,Navy @ Cincinnati,2026-01-02T21:30:00.000Z,Cincinnati,76.5%,Cincinnati (7),56.4%,UNDER 54.5,51.3%,Cincinnati,7.0,UNDER,54.5
+401778334,Mississippi State,Wake Forest,Wake Forest @ Mississippi State,2026-01-03T01:00:00.000Z,Mississippi State,55.7%,Wake Forest (3.5),53.3%,UNDER 53.5,52.0%,Wake Forest,3.5,UNDER,53.5
+401831583,SMU,Arizona,Arizona @ SMU,2026-01-03T01:00:00.000Z,Arizona,58.0%,SMU (3),50.5%,UNDER 51.5,51.2%,SMU,3.0,UNDER,51.5
 401843253,North Central College,Wisconsin-River Falls,Wisconsin-River Falls @ North Central College,2026-01-05T01:00:00.000Z,Wisconsin-River Falls,50.0%,Pending,0.0%,Pending,0.0%,,,,
 401833680,Montana State,Illinois State,Illinois State @ Montana State,2026-01-06T00:30:00.000Z,Montana State,82.1%,Pending,0.0%,Pending,0.0%,,,,
