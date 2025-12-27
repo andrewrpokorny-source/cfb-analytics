@@ -15,21 +15,22 @@ YEAR = 2025
 VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
 
 def fetch_with_retry(endpoint, params):
-    # Tries to fetch data. If 429 error (Rate Limit), waits and tries again.
     url = f"https://api.collegefootballdata.com{endpoint}"
     for attempt in range(1, 4): 
         try:
             res = requests.get(url, headers=HEADERS, params=params)
-            if res.status_code == 200: return res.json()
+            if res.status_code == 200:
+                return res.json()
             elif res.status_code == 429:
-                print(f"   ⚠️ API Rate Limit. Waiting {20 * attempt}s...")
-                time.sleep(20 * attempt)
-            else: return []
-        except: time.sleep(5)
+                print(f"   ⚠️ API Rate Limit. Waiting {15 * attempt}s...")
+                time.sleep(15 * attempt)
+            else:
+                return []
+        except:
+            time.sleep(5)
     return []
 
 def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
-    # Calculates Win Probability based on SRS and Talent
     talent_diff = (home_talent - away_talent) / 200.0
     srs_diff = home_srs - away_srs
     try: prob = 1 / (1 + math.exp(-1 * (srs_diff + talent_diff) / 7.5))
@@ -37,7 +38,7 @@ def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     return prob
 
 def main():
-    print("--- 🔮 FORECAST ENGINE (ROBUST) ---")
+    print("--- 🔮 FORECAST ENGINE (FINAL) ---")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -45,33 +46,52 @@ def main():
         feat_cols = model_spread.feature_names_in_
     except: print("❌ Models missing."); return
 
-    # 1. Fetch Schedule
-    print("   -> Fetching active schedule...")
-    games = fetch_with_retry("/games", {"year": YEAR, "seasonType": "postseason"})
-    lines = fetch_with_retry("/lines", {"year": YEAR, "seasonType": "postseason"})
+    # 1. FETCH SCHEDULE
+    print("   -> Fetching full active schedule...")
+    games = []
+    lines = []
     
-    lines_map = {}
-    if isinstance(lines, list):
-        for g in lines:
-            valid = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
-            lines_map[str(g['id'])] = valid
+    scenarios = [
+        {"seasonType": "postseason", "week": 1},
+        {"seasonType": "regular", "week": 16},
+        {"seasonType": "regular", "week": 17},
+        {"seasonType": "regular", "week": 15}
+    ]
+    
+    for s in scenarios:
+        g_data = fetch_with_retry("/games", {"year": YEAR, **s})
+        l_data = fetch_with_retry("/lines", {"year": YEAR, **s})
+        if isinstance(g_data, list): games.extend(g_data)
+        if isinstance(l_data, list): lines.extend(l_data)
 
-    # 2. Fetch Stats
+    unique_games = {g['id']: g for g in games}
+    games = list(unique_games.values())
+
+    lines_map = {}
+    for g in lines:
+        valid = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
+        lines_map[str(g['id'])] = valid
+
+    # 2. FETCH STATS
     srs = fetch_with_retry("/ratings/srs", {"year": YEAR})
     talent = fetch_with_retry("/talent", {"year": YEAR})
-    
     srs_map = {x['team']: x['rating'] for x in srs} if isinstance(srs, list) else {}
     tal_map = {x.get('school', x.get('team')): x['talent'] for x in talent} if isinstance(talent, list) else {}
 
-    # 3. Predict
+    # 3. GENERATE PREDICTIONS
     predictions = []
-    if isinstance(games, list):
-        print(f"   -> Scanning {len(games)} games...")
+    
+    if games:
+        print(f"   -> Processing {len(games)} potential games...")
         for g in games:
             if not isinstance(g, dict) or g.get('completed'): continue
             
             gid = str(g.get('id'))
-            home, away = g.get('home_team'), g.get('away_team')
+            
+            # --- FIX: HANDLE BOTH SNAKE_CASE AND CAMELCASE ---
+            home = g.get('home_team') or g.get('homeTeam')
+            away = g.get('away_team') or g.get('awayTeam')
+            
             if not home or not away: continue
 
             h_srs, a_srs = srs_map.get(home, 0), srs_map.get(away, 0)
@@ -80,7 +100,7 @@ def main():
             base_row = {
                 'home_talent_score': h_tal, 'away_talent_score': a_tal,
                 'home_srs_rating': h_srs, 'away_srs_rating': a_srs,
-                **{c: 0.0 for c in feat_cols if 'decay' in c} # Fill missing decay with 0
+                **{c: 0.0 for c in feat_cols if 'decay' in c}
             }
             
             # Moneyline
@@ -121,20 +141,22 @@ def main():
                             side = "OVER" if prob > 0.5 else "UNDER"
                             best_total = {"conf": conf, "book": line.get('provider'), "pick": f"{side} {line.get('overUnder')}", "pick_side": side, "pick_val": line.get('overUnder')}
 
+            start_str = g.get('start_date') or g.get('startDate')
             predictions.append({
                 "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
-                "StartDate": g.get('start_date'),
+                "StartDate": start_str,
                 "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", 
-                "Spread Pick": best_spread['pick'], "Spread Conf": f"{best_spread['conf']:.1%}", "Pick_Team": best_spread.get('pick_team'), "Pick_Line": best_spread.get('raw_line'),
-                "Total Pick": best_total['pick'], "Total Conf": f"{best_total['conf']:.1%}", "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val')
+                "Spread Pick": best_spread['pick'], "Spread Conf": f"{best_spread['conf']:.1%}", 
+                "Total Pick": best_total['pick'], "Total Conf": f"{best_total['conf']:.1%}",
+                "Pick_Team": best_spread.get('pick_team'), "Pick_Line": best_spread.get('raw_line'),
+                "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val')
             })
 
-    # DO NOT OVERWRITE if empty (Protects your manual history if API fails)
     if predictions:
         pd.DataFrame(predictions).to_csv(HISTORY_FILE, index=False)
         print(f"✅ SUCCESS: Saved {len(predictions)} forecasts.")
     else:
-        print("⚠️ No active games found. File not updated.")
+        print("⚠️ No active games found. (API returned 0 results).")
 
 if __name__ == "__main__":
     main()
