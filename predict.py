@@ -18,7 +18,6 @@ VALID_BOOKS = [
 ]
 HISTORY_FILE = "live_predictions.csv"
 
-# Normalization Map
 TEAM_MAP = {
     "USF": "South Florida", "Ole Miss": "Mississippi", "LSU": "Louisiana State",
     "UConn": "Connecticut", "UMass": "Massachusetts", 
@@ -69,7 +68,7 @@ def build_decay_lookup(year):
 
 # --- 3. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB QUANT ENGINE: ROBUST POSTSEASON ---")
+    print("--- 🏈 CFB QUANT ENGINE: FINAL FIX ---")
     YEAR = 2025
     
     try:
@@ -97,18 +96,21 @@ def main():
     current_week_preds = []
     print(f"   -> Scanning {len(games_data)} games...")
     
-    skipped_completed = 0
     generated_count = 0
-
     for g in games_data:
-        if g.get('completed'): 
-            skipped_completed += 1
-            continue
+        if g.get('completed'): continue
         
         gid = str(g.get('id'))
-        home, away = g.get('home_team'), g.get('away_team')
         
-        # ROBUST STATS: Default to empty dict if missing (Don't skip!)
+        # --- FIX: ROBUST NAME FINDER ---
+        # Checks both "home_team" (snake_case) and "homeTeam" (camelCase)
+        home = g.get('home_team') or g.get('homeTeam')
+        away = g.get('away_team') or g.get('awayTeam')
+        
+        if not home or not away:
+            # Skip placeholders like "TBD" if names are truly missing
+            continue
+
         h_d = decay_map.get(home, {})
         a_d = decay_map.get(away, {})
         
@@ -119,7 +121,7 @@ def main():
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        # --- 1. ALWAYS PREDICT STRAIGHT UP (Even if no lines) ---
+        # 1. STRAIGHT UP
         ml_row = base_row.copy()
         ml_row['spread'] = 0.0
         ml_row['overUnder'] = 55.5
@@ -130,34 +132,28 @@ def main():
             ml_probs = model_spread.predict_proba(pd.DataFrame([ml_row])[feat_cols])[0]
             ml_pick = home if ml_probs[1] > 0.5 else away
             ml_conf = max(ml_probs[1], 1 - ml_probs[1])
-        except:
-            continue
+        except: continue
 
-        # --- 2. PREDICT SPREAD/TOTAL (If lines exist) ---
+        # 2. SPREAD/TOTAL
         lines = shopping_cart.get(int(gid), [])
-        
         best_spread = {"conf": -1, "pick": "N/A", "book": "N/A"}
         best_total = {"conf": -1, "pick": "N/A", "book": "N/A"}
 
         for line in lines:
-            # Spread
             if line.get('spread') is not None:
                 row = base_row.copy()
                 row['spread'] = line.get('spread')
                 row['overUnder'] = line.get('overUnder', 55.5)
-                for col in feat_cols:
+                for col in feat_cols: 
                     if col not in row: row[col] = 0.0
-                
                 sp_prob = model_spread.predict_proba(pd.DataFrame([row])[feat_cols])[0][1]
                 s_conf = max(sp_prob, 1-sp_prob)
-                
                 if s_conf > best_spread['conf']:
                     p_team = home if sp_prob > 0.5 else away
                     p_line = line.get('spread') if sp_prob > 0.5 else -1 * line.get('spread')
                     fmt = f"+{p_line}" if p_line > 0 else f"{p_line}"
                     best_spread = {"conf": s_conf, "book": line.get('provider'), "pick": f"{p_team} ({fmt})", "raw_line": p_line, "pick_team": p_team}
 
-            # Total
             if line.get('overUnder') is not None:
                 row = base_row.copy()
                 row['spread'] = line.get('spread', 0.0)
@@ -170,7 +166,6 @@ def main():
                     side = "OVER" if t_prob > 0.5 else "UNDER"
                     best_total = {"conf": t_conf, "book": line.get('provider'), "pick": f"{side} {line.get('overUnder')}", "pick_side": side, "pick_val": line.get('overUnder')}
 
-        # Add Prediction (Even if lines are missing, we add the ML pick)
         current_week_preds.append({
             "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
             "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", "Moneyline_Conf_Raw": ml_conf,
@@ -181,27 +176,27 @@ def main():
         })
         generated_count += 1
 
-    print(f"   -> Skipped {skipped_completed} completed games.")
-    
     if current_week_preds:
         new_df = pd.DataFrame(current_week_preds)
         new_df['GameID'] = new_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         if os.path.exists(HISTORY_FILE):
-            history_df = pd.read_csv(HISTORY_FILE)
-            history_df['GameID'] = history_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
-            combined_df = pd.concat([new_df, history_df], ignore_index=True)
+            try:
+                history_df = pd.read_csv(HISTORY_FILE)
+                history_df['GameID'] = history_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
+                combined_df = pd.concat([new_df, history_df], ignore_index=True)
+            except: combined_df = new_df
         else:
             combined_df = new_df
         
         combined_df['HomeTeam'] = combined_df['HomeTeam'].replace(TEAM_MAP)
         combined_df['AwayTeam'] = combined_df['AwayTeam'].replace(TEAM_MAP)
-        combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
+        # Drop duplicates by Team Matchup to ensure clean data
         combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
         
         combined_df.to_csv(HISTORY_FILE, index=False)
         print(f"✅ SUCCESS: Updated database with {generated_count} active predictions.")
     else:
-        print("⚠️ Warning: No predictions generated. Is the API returning games?")
+        print("⚠️ Warning: No predictions generated.")
 
 if __name__ == "__main__":
     main()

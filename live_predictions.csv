@@ -1,2 +1,28 @@
 GameID,HomeTeam,AwayTeam,Game,Moneyline Pick,Moneyline Conf,Moneyline_Conf_Raw,Spread Pick,Spread Book,Spread Conf,Total Pick,Total Book,Total Conf,Pick_Team,Pick_Line,Pick_Side,Pick_Total
-401778315,,,None @ None,,57.8%,0.578391791304769,None (-7),DraftKings,55.7%,UNDER 62.5,DraftKings,54.4%,,-7.0,UNDER,62.5
+401778315,UTSA,Florida International,Florida International @ UTSA,UTSA,57.8%,0.577667371769501,UTSA (-7),DraftKings,57.3%,UNDER 62.5,DraftKings,52.9%,UTSA,-7.0,UNDER,62.5
+401778316,East Carolina,Pittsburgh,Pittsburgh @ East Carolina,East Carolina,53.3%,0.5327035867702357,East Carolina (+10.5),DraftKings,53.8%,OVER 52.5,DraftKings,58.3%,East Carolina,10.5,OVER,52.5
+401778317,Clemson,Penn State,Penn State @ Clemson,Clemson,52.6%,0.5260051455074845,Clemson (-2.5),DraftKings,53.1%,UNDER 47.5,DraftKings,55.1%,Clemson,-2.5,UNDER,47.5
+401778318,Army,Connecticut,UConn @ Army,Army,51.5%,0.5154860899762176,UConn (+7.5),DraftKings,50.3%,OVER 41.5,DraftKings,53.5%,UConn,7.5,OVER,41.5
+401778319,BYU,Georgia Tech,Georgia Tech @ BYU,BYU,60.2%,0.6019448832032276,BYU (-3.5),DraftKings,60.2%,OVER 55.5,DraftKings,53.0%,BYU,-3.5,OVER,55.5
+401778320,Fresno State,Miami (OH),Miami (OH) @ Fresno State,Fresno State,59.6%,0.5958911233534342,Fresno State (-5.5),DraftKings,58.1%,OVER 41.5,DraftKings,56.9%,Fresno State,-5.5,OVER,41.5
+401778321,San Diego State,North Texas,North Texas @ San Diego State,San Diego State,54.6%,0.5462723088279122,San Diego State (+6.5),DraftKings,54.6%,OVER 52.5,DraftKings,51.9%,San Diego State,6.5,OVER,52.5
+401778322,Missouri,Virginia,Virginia @ Missouri,Missouri,60.0%,0.6004862182453814,Missouri (-4),DraftKings,59.4%,OVER 43.5,DraftKings,52.2%,Missouri,-4.0,OVER,43.5
+401778323,Houston,Louisiana State,LSU @ Houston,Houston,55.3%,0.5533210091903678,Houston (+1.5),DraftKings,55.0%,OVER 41.5,DraftKings,63.4%,Houston,1.5,OVER,41.5
+401778324,App State,Georgia Southern,Georgia Southern @ App State,App State,54.7%,0.54676951753977,App State (+7),DraftKings,55.9%,OVER 59.5,DraftKings,50.2%,App State,7.0,OVER,59.5
+401778325,Louisiana Tech,Coastal Carolina,Coastal Carolina @ Louisiana Tech,Louisiana Tech,52.0%,0.5196836137245616,Coastal Carolina (+9.5),DraftKings,50.5%,OVER 51.5,DraftKings,53.6%,Coastal Carolina,9.5,OVER,51.5
+401778326,Illinois,Tennessee,Tennessee @ Illinois,Illinois,51.2%,0.5122798453484984,Illinois (+2.5),DraftKings,52.3%,UNDER 61.5,DraftKings,52.7%,Illinois,2.5,UNDER,61.5
+401778327,TCU,USC,USC @ TCU,TCU,56.9%,0.568715673530913,TCU (+6.5),DraftKings,57.4%,OVER 55.5,DraftKings,55.0%,TCU,6.5,OVER,55.5
+401778328,Vanderbilt,Iowa,Iowa @ Vanderbilt,Vanderbilt,62.1%,0.6205415410475529,Vanderbilt (-4.5),DraftKings,62.3%,OVER 47.5,DraftKings,56.6%,Vanderbilt,-4.5,OVER,47.5
+401778329,Duke,Arizona State,Arizona State @ Duke,Duke,57.6%,0.5762415076505123,Duke (-3),DraftKings,57.9%,OVER 49.5,DraftKings,56.4%,Duke,-3.0,OVER,49.5
+401778330,Texas,Michigan,Michigan @ Texas,Texas,55.8%,0.5584381665198896,Texas (-8.5),DraftKings,55.3%,UNDER 48.5,DraftKings,50.1%,Texas,-8.5,UNDER,48.5
+401778331,Utah,Nebraska,Nebraska @ Utah,Utah,54.1%,0.5405677448645417,Utah (-14),DraftKings,52.5%,OVER 50.5,DraftKings,54.8%,Utah,-14.0,OVER,50.5
+401769070,Ohio State,Miami,Miami @ Ohio State,Ohio State,53.5%,0.5348817603310827,Ohio State (-9.5),DraftKings,52.7%,UNDER 42.5,DraftKings,51.3%,Ohio State,-9.5,UNDER,42.5
+401769071,Texas Tech,Oregon,Oregon @ Texas Tech,Texas Tech,54.4%,0.5439942670376223,Texas Tech (+2.5),DraftKings,54.9%,UNDER 52.5,DraftKings,54.5%,Texas Tech,2.5,UNDER,52.5
+401769072,Indiana,Alabama,Alabama @ Indiana,Indiana,58.3%,0.5830243068786993,Indiana (-6.5),DraftKings,58.5%,N/A,N/A,-100.0%,Indiana,-6.5,,0.0
+401769073,Georgia,Mississippi,Ole Miss @ Georgia,Georgia,56.2%,0.5622365364913534,Georgia (-6.5),DraftKings,56.0%,UNDER 55.5,DraftKings,55.3%,Georgia,-6.5,UNDER,55.5
+401778332,Texas State,Rice,Rice @ Texas State,Rice,50.8%,0.5076854425295764,Rice (+11.5),DraftKings,51.9%,OVER 59.5,DraftKings,50.7%,Rice,11.5,OVER,59.5
+401778333,Cincinnati,Navy,Navy @ Cincinnati,Cincinnati,59.4%,0.5944091231224036,Cincinnati (+7),DraftKings,59.5%,OVER 54.5,DraftKings,55.0%,Cincinnati,7.0,OVER,54.5
+401778334,Mississippi State,Wake Forest,Wake Forest @ Mississippi State,Mississippi State,54.4%,0.5444512722488326,Mississippi State (-3.5),DraftKings,54.3%,OVER 53.5,DraftKings,51.5%,Mississippi State,-3.5,OVER,53.5
+401831583,SMU,Arizona,Arizona @ SMU,SMU,62.0%,0.6197567900086761,SMU (+3),DraftKings,62.4%,OVER 51.5,DraftKings,50.5%,SMU,3.0,OVER,51.5
+401843253,North Central College,Wisconsin-River Falls,Wisconsin-River Falls @ North Central College,North Central College,57.8%,0.578391791304769,N/A,N/A,-100.0%,N/A,N/A,-100.0%,,0.0,,0.0
+401833680,Montana State,Illinois State,Illinois State @ Montana State,Montana State,56.1%,0.5611462511723926,N/A,N/A,-100.0%,N/A,N/A,-100.0%,,0.0,,0.0
