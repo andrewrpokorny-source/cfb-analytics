@@ -162,4 +162,24 @@ with tab2:
     if graded_results:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
-        su_wins = len(res
+        
+        # --- FIXED SYNTAX HERE ---
+        su_wins = len(res_df[res_df['SU Result'] == 'WIN'])
+        su_loss = len(res_df[res_df['SU Result'] == 'LOSS'])
+        
+        su_pct = (su_wins/(su_wins+su_loss)*100) if (su_wins+su_loss) > 0 else 0
+        s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
+        s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Straight Up Record", f"{su_wins}-{su_loss}", f"{su_pct:.1f}%")
+        m2.metric("Spread Record", f"{s_wins}-{s_loss}")
+        m3.metric("Total Record", f"See Table")
+
+        def color_res(val):
+            return 'color: green; font-weight: bold' if val == 'WIN' else 'color: red; font-weight: bold' if val == 'LOSS' else 'color: gray'
+
+        st.divider()
+        st.dataframe(res_df[['Date', 'Game', 'Straight Up Pick', 'SU Result', 'Spread Pick', 'Spread Result', 'Total Pick', 'Total Result']].style.map(color_res, subset=['SU Result', 'Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
+    else:
+        st.info("No history yet.")
