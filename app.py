@@ -9,220 +9,173 @@ from dotenv import load_dotenv
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Quant Engine: Triple Threat Dashboard")
 
-# Load environment variables for local dev
 load_dotenv()
 
+# --- UTILS ---
 @st.cache_data(ttl=300) 
 def fetch_scores():
-    # 1. Try Local .env
-    api_key = os.getenv("CFBD_API_KEY")
-    
-    # 2. Try Streamlit Secrets (Cloud)
-    if not api_key:
-        try: api_key = st.secrets["CFBD_API_KEY"]
-        except: pass
-        
-    if not api_key:
-        st.error("❌ API Key Not Found. Check .env or secrets.toml")
-        return {}
+    # Fetch live scores to grade pending games if they finish
+    api_key = os.getenv("CFBD_API_KEY") or st.secrets.get("CFBD_API_KEY")
+    if not api_key: return {}
 
     headers = {"Authorization": f"Bearer {api_key}"}
+    games_dict = {}
     
     try:
-        # Fetch Regular Season
-        res_reg = requests.get("https://api.collegefootballdata.com/games", 
-                               headers=headers, params={"year": 2025, "seasonType": "regular"})
-        
-        # Fetch Postseason
-        res_post = requests.get("https://api.collegefootballdata.com/games", 
-                                headers=headers, params={"year": 2025, "seasonType": "postseason"})
-        
-        games_dict = {}
-        if res_reg.status_code == 200:
-            for g in res_reg.json(): games_dict[str(g['id'])] = g
-        if res_post.status_code == 200:
-            for g in res_post.json(): games_dict[str(g['id'])] = g
-            
+        # Check Regular Season & Postseason
+        for p in [{"year": 2025, "seasonType": "regular"}, {"year": 2025, "seasonType": "postseason"}]:
+            res = requests.get("https://api.collegefootballdata.com/games", headers=headers, params=p)
+            if res.status_code == 200:
+                for g in res.json(): games_dict[str(g['id'])] = g
         return games_dict
-    except Exception as e:
-        st.error(f"API Error: {e}")
-        return {}
+    except: return {}
 
 @st.cache_data(ttl=0)
-def load_picks():
+def load_data():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # Ensure GameID is a clean string
+        # Ensure GameID is string for matching
         if 'GameID' in df.columns:
-            df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         return df
-    except:
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
-# --- MAIN LOGIC ---
-df = load_picks()
-scores = fetch_scores()
-
-graded_results = []
-upcoming_games = []
-now_utc = datetime.now(timezone.utc)
-
-if not df.empty:
-    for _, row in df.iterrows():
-        gid = str(row.get("GameID"))
-        game = scores.get(gid)
-        
-        is_completed = False
-        home_score, away_score = 0, 0
-        date_str = "N/A"
-        
-        # CHECK 1: Live API Status
-        if game and game.get('status') == 'completed':
-            is_completed = True
-            home_score = game.get('home_points', 0)
-            away_score = game.get('away_points', 0)
-            date_str = game.get('start_date', 'N/A')[:10]
-            
-        # CHECK 2: Manual Backfill Status (Fallback)
-        elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
-            try:
-                # Check if score exists (it might be 0, so check not null)
-                h = row['Manual_HomeScore']
-                if pd.notnull(h) and str(h).strip() != '':
-                    is_completed = True
-                    home_score = int(float(row['Manual_HomeScore']))
-                    away_score = int(float(row['Manual_AwayScore']))
-                    date_str = str(row.get('Manual_Date', 'N/A'))
-            except: pass
-
-        # --- A. HISTORY GRADING ---
-        if is_completed:
-            winner = row['HomeTeam'] if home_score > away_score else row['AwayTeam']
-            
-            # Grade Spread
-            pick_team = row.get('Pick_Team', '')
-            try: line = float(row.get('Pick_Line', 0))
-            except: line = 0.0
-            
-            # Calculate Margin relative to Home Team
-            real_margin = home_score - away_score
-            
-            # If we picked Home, we need (Margin + Spread) > 0
-            if pick_team == row['HomeTeam']:
-                adj_margin = real_margin + line
-            # If we picked Away, we need (AwayScore - HomeScore - Spread) > 0
-            # Or simpler: Did the pick cover?
-            # Let's align with standard logic:
-            else:
-                # Picked Away. 
-                # e.g. Away +6.5. Away loses by 6 (-6 margin). -6 + 6.5 = +0.5 (Win).
-                # Reverse the margin for Away perspective
-                adj_margin = (away_score - home_score) + line
-
-            if adj_margin > 0: spr_res = "WIN"
-            elif adj_margin < 0: spr_res = "LOSS"
-            else: spr_res = "PUSH"
-
-            # Grade Total
-            try: pick_total = float(row.get('Pick_Total', 0))
-            except: pick_total = 0.0
-            pick_side = row.get('Pick_Side', '')
-            tot_score = home_score + away_score
-            
-            if tot_score == pick_total: tot_res = "PUSH"
-            elif pick_side == "OVER": tot_res = "WIN" if tot_score > pick_total else "LOSS"
-            elif pick_side == "UNDER": tot_res = "WIN" if tot_score < pick_total else "LOSS"
-            else: tot_res = "N/A"
-
-            # Grade Straight Up
-            ml_pick = row.get('Moneyline Pick', 'N/A')
-            ml_res = "WIN" if ml_pick == winner else "LOSS" if ml_pick != 'N/A' else "N/A"
-
-            graded_results.append({
-                "Date": date_str,
-                "Game": f"{row['AwayTeam']} {away_score} - {home_score} {row['HomeTeam']}",
-                "Winner": winner,
-                "Straight Up Pick": ml_pick,
-                "SU Result": ml_res,
-                "Spread Pick": row['Spread Pick'],
-                "Spread Result": spr_res,
-                "Total Pick": row['Total Pick'],
-                "Total Result": tot_res
-            })
-
-        # --- B. UPCOMING GAMES ---
-        else:
-            new_row = row.copy()
-            start_str = game.get('start_date') if game else row.get('StartDate')
-            
-            show_game = True
-            if start_str and pd.notnull(start_str):
-                new_row['Kickoff_Sort'] = start_str
-                try:
-                    dt = pd.to_datetime(start_str)
-                    if dt.tzinfo is None: dt = dt.tz_localize('UTC')
-                    if dt < now_utc: show_game = False
-                    new_row['Time'] = dt.tz_convert('US/Eastern').strftime('%a %I:%M %p')
-                except: new_row['Time'] = "Err"
-            else:
-                new_row['Kickoff_Sort'] = "2099-12-31"
-                new_row['Time'] = "TBD"
-            
-            if show_game:
-                upcoming_games.append(new_row)
-
-# --- DISPLAY ---
-tab1, tab2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"])
+def color_result(val):
+    if val == 'WIN': return 'color: #2e7d32; font-weight: bold'
+    if val == 'LOSS': return 'color: #d32f2f; font-weight: bold'
+    return 'color: gray'
 
 def color_conf(val):
-    try: score = float(val.strip('%'))
-    except: return ''
-    if score >= 60: return 'background-color: #2e7d32; color: white'
-    if score >= 55: return 'background-color: #4caf50; color: black'
+    try:
+        score = float(str(val).strip('%'))
+        if score >= 60: return 'background-color: #1b5e20; color: white' # Dark Green
+        if score >= 55: return 'background-color: #4caf50; color: black' # Green
+    except: pass
     return ''
 
-with tab1:
-    st.markdown("### 📅 Three-Panel Forecast")
-    if upcoming_games:
-        up_df = pd.DataFrame(upcoming_games)
-        if 'Kickoff_Sort' in up_df.columns:
-            up_df = up_df.sort_values(by=['Kickoff_Sort'], ascending=True)
+# --- MAIN ---
+df = load_data()
+scores = fetch_scores()
+
+if df.empty:
+    st.warning("⚠️ No predictions found. (live_predictions.csv is empty or missing)")
+    st.stop()
+
+graded = []
+upcoming = []
+
+for _, row in df.iterrows():
+    # 1. Determine Status (Completed vs Upcoming)
+    gid = str(row.get("GameID"))
+    api_data = scores.get(gid, {})
+    
+    is_completed = False
+    h_score = 0
+    a_score = 0
+    
+    # Priority A: Live API says completed
+    if api_data.get('status') == 'completed':
+        is_completed = True
+        h_score = api_data.get('home_points', 0)
+        a_score = api_data.get('away_points', 0)
+    
+    # Priority B: Manual Override (Historical Backfill)
+    elif pd.notnull(row.get('Manual_HomeScore')):
+        is_completed = True
+        h_score = row['Manual_HomeScore']
+        a_score = row['Manual_AwayScore']
+
+    # 2. Logic Branch
+    if is_completed:
+        # Grading Logic
+        winner = row['HomeTeam'] if h_score > a_score else row['AwayTeam']
+        
+        # Spread Grade
+        spread_res = "PUSH"
+        if pd.notnull(row.get('Pick_Line')):
+            pick_team = row['Pick_Team']
+            line = float(row['Pick_Line'])
+            
+            # Calculate Margin from Pick Team's perspective
+            if pick_team == row['HomeTeam']:
+                margin = (h_score - a_score) + line
+            else:
+                margin = (a_score - h_score) + line
+                
+            if margin > 0: spread_res = "WIN"
+            elif margin < 0: spread_res = "LOSS"
+
+        # Total Grade
+        total_res = "PUSH"
+        if pd.notnull(row.get('Pick_Total')):
+            actual_total = h_score + a_score
+            target = float(row['Pick_Total'])
+            side = row['Pick_Side']
+            
+            if side == 'OVER': total_res = "WIN" if actual_total > target else "LOSS"
+            elif side == 'UNDER': total_res = "WIN" if actual_total < target else "LOSS"
+            if actual_total == target: total_res = "PUSH"
+
+        graded.append({
+            "Date": row.get('StartDate', 'N/A')[:10],
+            "Game": f"{row['AwayTeam']} {a_score} - {h_score} {row['HomeTeam']}",
+            "Pick (SU)": row.get('Moneyline Pick'),
+            "Res (SU)": "WIN" if row.get('Moneyline Pick') == winner else "LOSS",
+            "Pick (Spr)": row.get('Spread Pick'),
+            "Res (Spr)": spread_res,
+            "Pick (Tot)": row.get('Total Pick'),
+            "Res (Tot)": total_res
+        })
+        
+    else:
+        # Upcoming
+        # Format Date
+        ts = row.get('StartDate')
+        try:
+            dt = pd.to_datetime(ts)
+            if dt.tzinfo is None: dt = dt.tz_localize('UTC')
+            fmt_time = dt.tz_convert('US/Eastern').strftime('%a %I:%M %p')
+        except: fmt_time = "TBD"
+        
+        row['Time'] = fmt_time
+        upcoming.append(row)
+
+# --- TABS ---
+t1, t2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"])
+
+with t1:
+    if upcoming:
+        up_df = pd.DataFrame(upcoming)
+        # Sort by date
+        if 'StartDate' in up_df.columns: up_df = up_df.sort_values('StartDate')
         
         c1, c2, c3 = st.columns(3)
+        
         with c1:
-            st.markdown("#### 🏆 Straight Up Winner")
-            st.dataframe(up_df[['Time', 'Game', 'Moneyline Pick', 'Moneyline Conf']].style.map(color_conf, subset=['Moneyline Conf']), hide_index=True, use_container_width=True)
+            st.markdown("#### 🏆 Straight Up")
+            st.dataframe(up_df[['Time', 'Game', 'Moneyline Pick', 'Moneyline Conf']].style.map(color_conf, subset=['Moneyline Conf']), hide_index=True)
+            
         with c2:
             st.markdown("#### ⚖️ Spread")
-            st.dataframe(up_df[['Game', 'Spread Pick', 'Spread Conf']].style.map(color_conf, subset=['Spread Conf']), hide_index=True, use_container_width=True)
+            st.dataframe(up_df[['Game', 'Spread Pick', 'Spread Conf']].style.map(color_conf, subset=['Spread Conf']), hide_index=True)
+            
         with c3:
             st.markdown("#### ↕️ Total")
-            st.dataframe(up_df[['Game', 'Total Pick', 'Total Conf']].style.map(color_conf, subset=['Total Conf']), hide_index=True, use_container_width=True)
+            st.dataframe(up_df[['Game', 'Total Pick', 'Total Conf']].style.map(color_conf, subset=['Total Conf']), hide_index=True)
     else:
-        st.info("No active games found.")
+        st.info("No upcoming games scheduled.")
 
-with tab2:
-    if graded_results:
-        res_df = pd.DataFrame(graded_results)
-        res_df = res_df.sort_values(by='Date', ascending=False)
+with t2:
+    if graded:
+        res_df = pd.DataFrame(graded)
         
-        su_wins = len(res_df[res_df['SU Result'] == 'WIN'])
-        su_loss = len(res_df[res_df['SU Result'] == 'LOSS'])
-        su_pct = (su_wins/(su_wins+su_loss)*100) if (su_wins+su_loss) > 0 else 0
+        # KPI Cards
+        wins = len(res_df[res_df['Res (Spr)'] == 'WIN'])
+        losses = len(res_df[res_df['Res (Spr)'] == 'LOSS'])
         
-        s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
-        s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
+        k1, k2 = st.columns(2)
+        k1.metric("Spread Record", f"{wins}-{losses}")
         
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Straight Up Record", f"{su_wins}-{su_loss}", f"{su_pct:.1f}%")
-        m2.metric("Spread Record", f"{s_wins}-{s_loss}")
-        m3.metric("Total Record", f"See Table")
-
-        def color_res(val):
-            return 'color: green; font-weight: bold' if val == 'WIN' else 'color: red; font-weight: bold' if val == 'LOSS' else 'color: gray'
-
-        st.divider()
-        st.dataframe(res_df[['Date', 'Game', 'Straight Up Pick', 'SU Result', 'Spread Pick', 'Spread Result', 'Total Pick', 'Total Result']].style.map(color_res, subset=['SU Result', 'Spread Result', 'Total Result']), hide_index=True, use_container_width=True)
+        st.dataframe(res_df.style.map(color_result, subset=['Res (SU)', 'Res (Spr)', 'Res (Tot)']), hide_index=True, use_container_width=True)
     else:
         st.info("No history yet.")
