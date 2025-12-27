@@ -2,8 +2,6 @@ import os
 import pandas as pd
 import joblib
 import requests
-import json
-import math
 import time
 from dotenv import load_dotenv
 
@@ -25,12 +23,12 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- 🔮 FORECAST ENGINE (SMART MONEYLINE) ---")
+    print("--- 🔮 FORECAST ENGINE (LOGIC ENFORCED) ---")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
-        model_win = joblib.load("model_winner.pkl") # NEW
+        model_win = joblib.load("model_winner.pkl")
         feat_cols = model_spread.feature_names_in_
     except: print("❌ Models missing. Run retrain.py first."); return
 
@@ -78,7 +76,6 @@ def main():
             if not home or not away: continue
 
             game_lines = lines_map.get(gid, [])
-            # We need lines to make ANY prediction now (since model requires spread input)
             if not game_lines: continue 
 
             best_spread = {"conf": 0.0, "pick": "Pending"}
@@ -90,7 +87,6 @@ def main():
                 total_val = line.get('overUnder')
                 if spread_val is None or total_val is None: continue
 
-                # Build Input Row
                 row = {
                     'spread': spread_val,
                     'overUnder': total_val,
@@ -101,7 +97,7 @@ def main():
                 }
                 input_df = pd.DataFrame([row])[feat_cols]
 
-                # 1. SPREAD
+                # SPREAD
                 prob = model_spread.predict_proba(input_df)[0][1]
                 conf = max(prob, 1-prob)
                 if conf > best_spread['conf']:
@@ -109,23 +105,28 @@ def main():
                     p_line = spread_val if prob > 0.5 else -spread_val
                     best_spread = {"conf": conf, "pick": f"{p_team} ({p_line})", "pick_team": p_team, "pick_line": p_line}
 
-                # 2. TOTAL
+                # TOTAL
                 prob = model_total.predict_proba(input_df)[0][1]
                 conf = max(prob, 1-prob)
                 if conf > best_total['conf']:
                     side = "OVER" if prob > 0.5 else "UNDER"
                     best_total = {"conf": conf, "pick": f"{side} {total_val}", "pick_side": side, "pick_val": total_val}
                     
-                # 3. MONEYLINE (SMART)
+                # MONEYLINE
                 prob = model_win.predict_proba(input_df)[0][1]
                 conf = max(prob, 1-prob)
-                # Keep highest confidence version of the ML pick
                 if conf > best_ml['conf']:
                     ml_team = home if prob > 0.5 else away
                     best_ml = {"conf": conf, "pick": ml_team}
 
-            # If we found valid lines
+            # --- LOGIC ENFORCEMENT ---
             if best_spread['conf'] > 0:
+                # Rule: If Spread Pick is Favorite (Negative Line), ML must match
+                if best_spread.get('pick_line', 0) < 0:
+                    if best_ml['pick'] != best_spread['pick_team']:
+                        # Override ML with Spread pick
+                        best_ml['pick'] = best_spread['pick_team']
+
                 predictions.append({
                     "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
                     "StartDate": g.get('start_date') or g.get('startDate'),
@@ -137,17 +138,14 @@ def main():
                 })
 
     if predictions:
-        # Load existing history to preserve it
         try:
             old_df = pd.read_csv(HISTORY_FILE)
             history = old_df[old_df['Manual_HomeScore'].notna()]
         except: history = pd.DataFrame()
         
-        # Merge Future + History
-        future = pd.DataFrame(predictions)
-        final_df = pd.concat([future, history], ignore_index=True)
+        final_df = pd.concat([pd.DataFrame(predictions), history], ignore_index=True)
         final_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Updated predictions using Smart Moneyline model.")
+        print(f"✅ SUCCESS: Updated predictions with logic enforcement.")
     else:
         print("⚠️ No games found with valid odds.")
 

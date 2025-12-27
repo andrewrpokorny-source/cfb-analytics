@@ -28,7 +28,7 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- ⚖️ RUNNING HONEST BACKFILL (SYNCHRONIZED MODELS) ---")
+    print("--- ⚖️ RUNNING HONEST BACKFILL (LOGIC ENFORCED) ---")
     
     # 1. Fetch ALL Data
     print("   -> Fetching full season data...")
@@ -83,54 +83,48 @@ def main():
     train_df = df[df['StartDate'] < SPLIT_DATE].copy()
     test_df = df[df['StartDate'] >= SPLIT_DATE].copy()
     
-    print(f"   -> Training Models on {len(train_df)} games (Pre-Dec 1)...")
-    
-    # 3. TRAIN MODELS (NOW INCLUDING MONEYLINE)
+    # 3. TRAIN MODELS
+    print(f"   -> Training models on {len(train_df)} games...")
     X_train = train_df[FEATURES]
-    
-    # Target: Did Home Cover?
     y_spread = ((train_df['Manual_HomeScore'] + train_df['spread']) > train_df['Manual_AwayScore']).astype(int)
-    # Target: Did Home Win? (NEW)
     y_win = (train_df['Manual_HomeScore'] > train_df['Manual_AwayScore']).astype(int)
-    # Target: Did it go Over?
     y_total = ((train_df['Manual_HomeScore'] + train_df['Manual_AwayScore']) > train_df['overUnder']).astype(int)
     
     model_spread = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
     model_spread.fit(X_train, y_spread)
     
     model_moneyline = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
-    model_moneyline.fit(X_train, y_win)  # Now training a real winner model
+    model_moneyline.fit(X_train, y_win)
     
     model_total = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
     model_total.fit(X_train, y_total)
     
-    # 4. PREDICT
+    # 4. PREDICT & ENFORCE LOGIC
     print(f"   -> Grading {len(test_df)} December games...")
     history_rows = []
     
     for idx, row in test_df.iterrows():
         input_row = pd.DataFrame([row[FEATURES]])
         
-        # SPREAD PICK
+        # SPREAD PREDICTION
         prob_spr = model_spread.predict_proba(input_row)[0][1]
         conf_spr = max(prob_spr, 1-prob_spr)
         pick_team_spr = row['HomeTeam'] if prob_spr > 0.5 else row['AwayTeam']
         pick_line_spr = row['spread'] if prob_spr > 0.5 else -row['spread']
         
-        # MONEYLINE PICK (Now using the ML Model)
+        # MONEYLINE PREDICTION
         prob_win = model_moneyline.predict_proba(input_row)[0][1]
         ml_pick = row['HomeTeam'] if prob_win > 0.5 else row['AwayTeam']
         
-        # Safety: If Spread Pick is heavy favorite, ensure ML matches
-        # (Prevents picking Team A -10 but Team B to win)
-        if pick_team_spr == ml_pick:
-            pass # Consistent
-        else:
-            # If logic conflicts, trust the one with higher confidence
-            # But usually, if Spread says "Cover", and they are favorite, they win.
-            pass 
+        # --- LOGIC ENFORCEMENT ---
+        # If we pick a team to cover a NEGATIVE spread, they MUST be the ML pick.
+        if pick_line_spr < 0:
+            if ml_pick != pick_team_spr:
+                # Conflict detected: Favorite covered but didn't win? Impossible.
+                # Force ML to match the Spread pick (since we are confident they cover)
+                ml_pick = pick_team_spr
 
-        # TOTAL PICK
+        # TOTAL PREDICTION
         prob_tot = model_total.predict_proba(input_row)[0][1]
         conf_tot = max(prob_tot, 1-prob_tot)
         pick_side = "OVER" if prob_tot > 0.5 else "UNDER"
@@ -159,7 +153,7 @@ def main():
     final_df = pd.concat([future, pd.DataFrame(history_rows)], ignore_index=True)
     final_df.to_csv("live_predictions.csv", index=False)
     
-    print(f"✅ SUCCESS: History corrected. Moneyline now uses AI logic.")
+    print(f"✅ SUCCESS: History regenerated with strict logic enforcement.")
 
 if __name__ == "__main__":
     main()
