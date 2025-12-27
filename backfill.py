@@ -26,10 +26,16 @@ TEAM_MAP = {
 
 def fetch_data(endpoint, params):
     try:
-        time.sleep(0.5)
+        time.sleep(0.6) # Increased delay to prevent rate limit errors
         res = requests.get(f"https://api.collegefootballdata.com{endpoint}", headers=HEADERS, params=params)
-        return res.json()
-    except: return []
+        res.raise_for_status() # <--- CRITICAL: Errors now go to 'except'
+        data = res.json()
+        # Double check: endpoints should return lists. If dict (error), treat as empty.
+        if isinstance(data, dict) and 'message' in data:
+            return []
+        return data
+    except Exception as e:
+        return []
 
 def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     # Performance Override
@@ -41,7 +47,7 @@ def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     return prob
 
 def main():
-    print("--- 🕰️ RUNNING PARANOID BACKFILL ---")
+    print("--- 🕰️ RUNNING BULLETPROOF BACKFILL ---")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -54,11 +60,16 @@ def main():
     srs = fetch_data("/ratings/srs", {"year": YEAR})
     talent = fetch_data("/talent", {"year": YEAR})
     
-    srs_map = {x['team']: x['rating'] for x in srs}
-    talent_map = {x.get('school', x.get('team')): x['talent'] for x in talent}
+    srs_map = {}
+    if isinstance(srs, list):
+        srs_map = {x['team']: x['rating'] for x in srs}
+        
+    talent_map = {}
+    if isinstance(talent, list):
+        talent_map = {x.get('school', x.get('team')): x['talent'] for x in talent}
     
     decay_map = {}
-    if stats:
+    if stats and isinstance(stats, list):
         df_stats = pd.json_normalize(stats)
         metrics = ['offense.ppa', 'offense.successRate', 'defense.ppa', 'defense.successRate']
         for team, group in df_stats.groupby('team'):
@@ -68,7 +79,9 @@ def main():
                 else: t_mom[f"decay_{m}"] = 0.0
             decay_map[team] = t_mom
 
+    # Weeks to scan
     periods = [
+        {"type": "regular", "week": 13},
         {"type": "regular", "week": 14},
         {"type": "regular", "week": 15},
         {"type": "regular", "week": 16},
@@ -81,41 +94,48 @@ def main():
         games = fetch_data("/games", {"year": YEAR, "seasonType": p['type'], "week": p['week']})
         lines_data = fetch_data("/lines", {"year": YEAR, "seasonType": p['type'], "week": p['week']})
         
+        # Validation: Ensure we actually got lists
+        if not isinstance(games, list): games = []
+        if not isinstance(lines_data, list): lines_data = []
+
         lines_map = {}
         for g in lines_data:
+            # Safe parsing of lines
+            if not isinstance(g, dict): continue
             valid_lines = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
-            lines_map[str(g['id'])] = valid_lines
+            lines_map[str(g.get('id'))] = valid_lines
 
         print(f"   -> Scanning {p['type']} week {p['week']} ({len(games)} games)...")
 
         for g in games:
-            # SKIP PENDING GAMES
+            if not isinstance(g, dict): continue
             if not g.get('completed'): continue
 
-            gid = str(g['id'])
-            home = g.get('home_team')
-            away = g.get('away_team')
+            gid = str(g.get('id'))
             
-            # --- PARANOID CHECK 1: NAMES ---
-            if not home or not away:
-                continue # Skip "ghost" games without names
+            # Universal Key Translator
+            home = g.get('home_team') or g.get('homeTeam')
+            away = g.get('away_team') or g.get('awayTeam')
             
-            # --- PARANOID CHECK 2: SCORES ---
             h_score = g.get('home_points')
-            a_score = g.get('away_points')
+            if h_score is None: h_score = g.get('homePoints')
             
-            if h_score is None or a_score is None:
-                continue # Skip games without valid scores
-                
-            start_date = g.get('start_date')
+            a_score = g.get('away_points')
+            if a_score is None: a_score = g.get('awayPoints')
+            
+            start_date = g.get('start_date') or g.get('startDate')
+
+            # Skip if critical data is missing
+            if not home or not away or h_score is None or a_score is None:
+                continue
+
             date_short = start_date[:10] if start_date else "N/A"
 
-            # --- BUILD PREDICTION ---
             h_d = decay_map.get(home, {})
             a_d = decay_map.get(away, {})
             # Defaults
-            if not h_d: h_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()}
-            if not a_d: a_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()}
+            if not h_d: h_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()} if decay_map else {}
+            if not a_d: a_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()} if decay_map else {}
 
             h_srs, a_srs = srs_map.get(home, 0), srs_map.get(away, 0)
             h_tal, a_tal = talent_map.get(home, 10), talent_map.get(away, 10)
@@ -192,7 +212,6 @@ def main():
 
     if new_rows:
         backfill_df = pd.DataFrame(new_rows)
-        # Force Clean GameID
         backfill_df['GameID'] = backfill_df['GameID'].astype(str)
         backfill_df['HomeTeam'] = backfill_df['HomeTeam'].replace(TEAM_MAP)
         backfill_df['AwayTeam'] = backfill_df['AwayTeam'].replace(TEAM_MAP)
@@ -206,9 +225,9 @@ def main():
             combined = backfill_df
 
         combined.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Injected {len(new_rows)} CLEAN historical games.")
+        print(f"✅ SUCCESS: Injected {len(new_rows)} historical games.")
     else:
-        print("⚠️ No historical games found.")
+        print("⚠️ No valid games found.")
 
 if __name__ == "__main__":
     main()
