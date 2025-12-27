@@ -10,8 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("CFBD_API_KEY")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-
-# The exact features your engine uses
 FEATURES = [
     'spread', 'overUnder',
     'home_talent_score', 'away_talent_score',
@@ -24,20 +22,18 @@ def fetch_with_retry(endpoint, params):
         try:
             res = requests.get(url, headers=HEADERS, params=params)
             if res.status_code == 200: return res.json()
-            elif res.status_code == 429:
-                print(f"   ⚠️ Rate Limit. Cooling down ({10*attempt}s)...")
-                time.sleep(10 * attempt)
+            elif res.status_code == 429: time.sleep(10 * attempt)
         except: time.sleep(5)
     return []
 
 def main():
-    print("--- 🧠 TRAINING ON COMPLETED GAMES (INCLUDING BOWLS) ---")
+    print("--- 🧠 TRAINING ALL 3 BRAINS (SPREAD, TOTAL, WINNER) ---")
     
     all_games = []
     
     # 1. Fetch 2024 and 2025 Data
     for year in [2024, 2025]:
-        print(f"   -> Fetching {year} season data...")
+        print(f"   -> Fetching {year} data...")
         games = fetch_with_retry("/games", {"year": year, "seasonType": "both"})
         lines = fetch_with_retry("/lines", {"year": year, "seasonType": "both"})
         srs = fetch_with_retry("/ratings/srs", {"year": year})
@@ -55,11 +51,9 @@ def main():
         if isinstance(games, list):
             for g in games:
                 if not g.get('completed'): continue 
-                
                 gid = str(g['id'])
                 
-                # --- UNIVERSAL KEY HANDLING ---
-                # Checks both snake_case (home_team) and camelCase (homeTeam)
+                # Universal Key Handling
                 home = g.get('home_team') or g.get('homeTeam')
                 away = g.get('away_team') or g.get('awayTeam')
                 h_pts = g.get('home_points') or g.get('homePoints')
@@ -67,11 +61,6 @@ def main():
                 
                 if not home or not away or h_pts is None or a_pts is None: continue
 
-                # Get Stats
-                h_srs, a_srs = srs_map.get(home, 0), srs_map.get(away, 0)
-                h_tal, a_tal = tal_map.get(home, 10), tal_map.get(away, 10)
-                
-                # Get Lines
                 line_data = line_map.get(gid, {})
                 spread = line_data.get('spread')
                 total = line_data.get('overUnder')
@@ -81,43 +70,43 @@ def main():
                 all_games.append({
                     'spread': spread,
                     'overUnder': total,
-                    'home_talent_score': h_tal, 'away_talent_score': a_tal,
-                    'home_srs_rating': h_srs, 'away_srs_rating': a_srs,
+                    'home_talent_score': tal_map.get(home, 10), 
+                    'away_talent_score': tal_map.get(away, 10),
+                    'home_srs_rating': srs_map.get(home, 0), 
+                    'away_srs_rating': srs_map.get(away, 0),
                     'home_points': h_pts,
                     'away_points': a_pts
                 })
 
-    # 2. Prepare Training Data
-    if not all_games:
-        print("❌ No data found to train on.")
-        return
-
+    if not all_games: return
     df = pd.DataFrame(all_games)
-    print(f"   -> Found {len(df)} games with valid data.")
-    
-    # Define Targets
-    df['target_cover'] = ((df['home_points'] + df['spread']) > df['away_points']).astype(int)
-    df['target_over'] = ((df['home_points'] + df['away_points']) > df['overUnder']).astype(int)
-    
     X = df[FEATURES]
     
-    # 3. Train Models
+    # --- TRAIN 3 MODELS ---
     print("   -> Training Spread Model...")
+    y_cover = ((df['home_points'] + df['spread']) > df['away_points']).astype(int)
     model_spread = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
-    model_spread.fit(X, df['target_cover'])
+    model_spread.fit(X, y_cover)
+    
+    print("   -> Training Winner (Moneyline) Model...")
+    y_win = (df['home_points'] > df['away_points']).astype(int)
+    model_win = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
+    model_win.fit(X, y_win)
     
     print("   -> Training Total Model...")
+    y_total = ((df['home_points'] + df['away_points']) > df['overUnder']).astype(int)
     model_total = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
-    model_total.fit(X, df['target_over'])
+    model_total.fit(X, y_total)
     
-    # 4. Save
-    model_spread.feature_names_in_ = FEATURES
-    model_total.feature_names_in_ = FEATURES
+    # Save Feature Names
+    for m in [model_spread, model_win, model_total]:
+        m.feature_names_in_ = FEATURES
     
     joblib.dump(model_spread, "model_spread_tuned.pkl")
+    joblib.dump(model_win, "model_winner.pkl") # NEW FILE
     joblib.dump(model_total, "model_total.pkl")
     
-    print("✅ SUCCESS: Models updated with latest bowl results!")
+    print("✅ SUCCESS: All 3 models saved.")
 
 if __name__ == "__main__":
     main()
