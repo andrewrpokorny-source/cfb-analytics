@@ -24,8 +24,7 @@ def load_data():
     if 'GameID' in df.columns:
         df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         
-    # --- CRITICAL FIX: Ensure 'Manual_HomeScore' exists ---
-    # The real engine doesn't output this column, so we add it if missing to prevent the KeyError.
+    # Safety Check
     if 'Manual_HomeScore' not in df.columns:
         df['Manual_HomeScore'] = pd.NA
         df['Manual_AwayScore'] = pd.NA
@@ -49,9 +48,12 @@ if 'StartDate' in df.columns:
     df = df.sort_values(by='StartDate', ascending=True)
 
 # Split Data
-# If Manual Score is missing (NaN), it's Upcoming. Otherwise, it's History.
 upcoming = df[df['Manual_HomeScore'].isna()].copy()
 graded = df[df['Manual_HomeScore'].notna()].copy()
+
+# Sort History in Reverse Chronological Order (Newest first)
+if not graded.empty:
+    graded = graded.sort_values(by='StartDate', ascending=False)
 
 t1, t2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"])
 
@@ -63,17 +65,20 @@ def color_conf(val):
     except: pass
     return ''
 
+def color_result_cell(val):
+    # Visual cues for W/L
+    if val == 'WIN': return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold' # Light Green
+    if val == 'LOSS': return 'background-color: #ffcdd2; color: #b71c1c; font-weight: bold' # Light Red
+    if val == 'PUSH': return 'background-color: #e0e0e0; color: #424242'
+    return ''
+
 with t1:
     st.subheader(f"Upcoming Games ({len(upcoming)})")
     if not upcoming.empty:
-        # Define the exact columns we want to show
         cols = ['StartDate', 'Game', 'Moneyline Pick', 'Moneyline Conf', 
                 'Spread Pick', 'Spread Conf', 'Total Pick', 'Total Conf']
-        
-        # Only show columns that actually exist in the file
         valid_cols = [c for c in cols if c in upcoming.columns]
         
-        # Display
         st.dataframe(
             upcoming[valid_cols].style.map(color_conf, subset=[c for c in ['Moneyline Conf', 'Spread Conf', 'Total Conf'] if c in valid_cols]),
             use_container_width=True,
@@ -83,8 +88,40 @@ with t1:
         st.info("No upcoming games found.")
 
 with t2:
-    st.subheader(f"History ({len(graded)})")
     if not graded.empty:
-        st.dataframe(graded, use_container_width=True)
+        # --- CALCULATE STATS ---
+        # Helper to get record
+        def get_record(df, res_col):
+            wins = len(df[df[res_col] == 'WIN'])
+            losses = len(df[df[res_col] == 'LOSS'])
+            pushes = len(df[df[res_col] == 'PUSH'])
+            total = wins + losses
+            pct = (wins / total * 100) if total > 0 else 0.0
+            return f"{wins}-{losses}-{pushes}", pct
+
+        rec_su, pct_su = get_record(graded, 'Res (SU)')
+        rec_spr, pct_spr = get_record(graded, 'Res (Spr)')
+        rec_tot, pct_tot = get_record(graded, 'Res (Tot)')
+
+        # --- SCOREBOARD ---
+        st.markdown("### 📊 Performance Report (Since Dec 1)")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🏆 Straight Up", rec_su, f"{pct_su:.1f}%")
+        m2.metric("⚖️ Spread", rec_spr, f"{pct_spr:.1f}%")
+        m3.metric("↕️ Total", rec_tot, f"{pct_tot:.1f}%")
+
+        st.divider()
+
+        # --- DETAILED TABLE ---
+        # Select clean columns for history
+        hist_cols = ['Date', 'Game', 'Pick (SU)', 'Res (SU)', 'Pick (Spr)', 'Res (Spr)', 'Pick (Tot)', 'Res (Tot)']
+        # Only use cols that exist (in case backfill didn't create them all)
+        valid_hist_cols = [c for c in hist_cols if c in graded.columns]
+        
+        st.dataframe(
+            graded[valid_hist_cols].style.map(color_result_cell, subset=[c for c in ['Res (SU)', 'Res (Spr)', 'Res (Tot)'] if c in graded.columns]),
+            use_container_width=True,
+            hide_index=True
+        )
     else:
         st.info("No graded games yet.")
