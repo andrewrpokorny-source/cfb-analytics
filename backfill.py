@@ -44,7 +44,7 @@ def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     return prob
 
 def main():
-    print("--- 🕰️ RUNNING HISTORY BACKFILL ---")
+    print("--- 🕰️ RUNNING AGGRESSIVE BACKFILL ---")
     
     # 1. Load Models
     try:
@@ -55,68 +55,64 @@ def main():
         print("❌ Models missing. Run train_models.py first.")
         return
 
-    # 2. Fetch Context Data (Stats, SRS, Talent)
+    # 2. Fetch Context Data
     print("   -> Fetching season stats...")
     stats = fetch_data("/stats/game/advanced", {"year": YEAR})
     srs = fetch_data("/ratings/srs", {"year": YEAR})
     talent = fetch_data("/talent", {"year": YEAR})
     
-    # Build Maps
     srs_map = {x['team']: x['rating'] for x in srs}
     talent_map = {x.get('school', x.get('team')): x['talent'] for x in talent}
     
-    # Decay Stats Map
     decay_map = {}
     if stats:
         df_stats = pd.json_normalize(stats)
-        # Ensure numeric
         metrics = ['offense.ppa', 'offense.successRate', 'defense.ppa', 'defense.successRate']
         for team, group in df_stats.groupby('team'):
             t_mom = {}
             for m in metrics:
-                if m in group.columns:
-                    # Simple average for backfill is sufficient
-                    t_mom[f"decay_{m}"] = group[m].mean()
-                else:
-                    t_mom[f"decay_{m}"] = 0.0
+                if m in group.columns: t_mom[f"decay_{m}"] = group[m].mean()
+                else: t_mom[f"decay_{m}"] = 0.0
             decay_map[team] = t_mom
 
-    # 3. Define Time Periods to Backfill
-    # We want Conf Champ (Week 15) and Postseason
+    # 3. Define Periods (Added Week 16 for CCGs)
     periods = [
+        {"type": "regular", "week": 14},
         {"type": "regular", "week": 15},
+        {"type": "regular", "week": 16}, # <--- Conference Championships often here
         {"type": "postseason", "week": 1}
     ]
 
     new_rows = []
 
     for p in periods:
-        print(f"   -> Processing {p['type']} week {p['week']}...")
         games = fetch_data("/games", {"year": YEAR, "seasonType": p['type'], "week": p['week']})
         lines_data = fetch_data("/lines", {"year": YEAR, "seasonType": p['type'], "week": p['week']})
         
-        # Map lines to Game ID
+        print(f"   -> Scanning {p['type']} week {p['week']}: Found {len(games)} games.")
+
         lines_map = {}
         for g in lines_data:
             valid_lines = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
-            lines_map[g['id']] = valid_lines
+            lines_map[str(g['id'])] = valid_lines
 
         for g in games:
-            # IMPORTANT: Only process COMPLETED games for backfill
-            if not g.get('completed'):
-                continue
+            # ONLY Completed Games
+            if not g.get('completed'): continue
 
             gid = str(g['id'])
             home = g.get('home_team')
             away = g.get('away_team')
             start_date = g.get('start_date')
 
-            # Skip if stats missing
+            # --- ROBUST STATS (Don't Skip!) ---
             h_d = decay_map.get(home, {})
             a_d = decay_map.get(away, {})
-            if not h_d or not a_d: continue
+            
+            # Use defaults if missing
+            if not h_d: h_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()}
+            if not a_d: a_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()}
 
-            # Build Features
             h_srs, a_srs = srs_map.get(home, 0), srs_map.get(away, 0)
             h_tal, a_tal = talent_map.get(home, 10), talent_map.get(away, 10)
 
@@ -132,13 +128,12 @@ def main():
             ml_conf = max(ml_prob, 1 - ml_prob)
 
             # B. Spread/Total
-            game_lines = lines_map.get(int(gid), [])
+            game_lines = lines_map.get(gid, [])
             best_spread = {"conf": -1, "pick": "N/A", "book": "N/A"}
             best_total = {"conf": -1, "pick": "N/A", "book": "N/A"}
             
-            # If no lines found (common for old games in API), skip spread/total but keep ML
+            # If no lines, save ML only
             if not game_lines:
-                # Add just the Moneyline prediction
                 new_rows.append({
                     "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
                     "StartDate": start_date,
@@ -149,12 +144,11 @@ def main():
                 continue
 
             for line in game_lines:
-                # Spread
                 if line.get('spread'):
                     row = base_row.copy()
                     row['spread'] = line.get('spread')
                     row['overUnder'] = line.get('overUnder', 55.5)
-                    for c in feat_cols:
+                    for c in feat_cols: 
                         if c not in row: row[c] = 0.0
                     prob = model_spread.predict_proba(pd.DataFrame([row])[feat_cols])[0][1]
                     conf = max(prob, 1-prob)
@@ -167,7 +161,6 @@ def main():
                             "raw_line": p_line, "pick_team": p_team
                         }
 
-                # Total
                 if line.get('overUnder'):
                     row = base_row.copy()
                     row['spread'] = line.get('spread', 0.0)
@@ -194,7 +187,7 @@ def main():
                 "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val')
             })
 
-    # 4. Save/Append
+    # 4. Save
     if new_rows:
         backfill_df = pd.DataFrame(new_rows)
         backfill_df['GameID'] = backfill_df['GameID'].astype(str)
@@ -204,16 +197,16 @@ def main():
         if os.path.exists(HISTORY_FILE):
             existing_df = pd.read_csv(HISTORY_FILE)
             existing_df['GameID'] = existing_df['GameID'].astype(str)
+            # Smart Dedup: Keep new row if ID matches (to update logic), but append new games
             combined = pd.concat([backfill_df, existing_df], ignore_index=True)
+            combined = combined.drop_duplicates(subset=['GameID'], keep='first')
         else:
             combined = backfill_df
 
-        # Dedup (keep first)
-        combined = combined.drop_duplicates(subset=['GameID'], keep='first')
         combined.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Injected {len(new_rows)} historical games into the database.")
+        print(f"✅ SUCCESS: Injected {len(new_rows)} historical games.")
     else:
-        print("⚠️ No historical games found to backfill.")
+        print("⚠️ Still no games found. Check API Key or Season Year.")
 
 if __name__ == "__main__":
     main()
