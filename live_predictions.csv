@@ -1,6 +1,9 @@
 GameID,HomeTeam,AwayTeam,Game,StartDate,Moneyline Pick,Moneyline Conf,Moneyline_Conf_Raw,Spread Pick,Spread Book,Spread Conf,Total Pick,Total Book,Total Conf,Pick_Team,Pick_Line,Pick_Side,Pick_Total,Manual_HomeScore,Manual_AwayScore,Manual_Date
-manual_1,Georgia,Alabama,Alabama @ Georgia,2025-12-06T20:00:00.000Z,Georgia,65.0%,0.65,Georgia (-3.5),DraftKings,58.5%,OVER 54.5,DraftKings,55.0%,Georgia,-3.5,OVER,54.5,42,35,2025-12-06
-manual_2,Ohio State,Oregon,Oregon @ Ohio State,2025-12-07T19:30:00.000Z,Oregon,52.0%,0.52,Oregon (+3),FanDuel,61.2%,UNDER 60.5,FanDuel,53.0%,Oregon,3.0,UNDER,60.5,24,27,2025-12-07
-manual_3,Texas,Texas A&M,Texas A&M @ Texas,2025-11-29T15:30:00.000Z,Texas,70.1%,0.701,Texas (-7),BetMGM,56.0%,OVER 58.0,BetMGM,51.5%,Texas,-7.0,OVER,58.0,31,17,2025-11-29
-manual_4,Clemson,Miami,Miami @ Clemson,2025-12-06T20:00:00.000Z,Miami,51.0%,0.51,Miami (+4.5),Caesars,59.0%,UNDER 49.5,Caesars,62.0%,Miami,4.5,UNDER,49.5,21,24,2025-12-06
-manual_5,Boise State,UNLV,UNLV @ Boise State,2025-12-05T20:00:00.000Z,Boise State,80.0%,0.8,Boise State (-10.5),DraftKings,54.0%,OVER 65.5,DraftKings,57.0%,Boise State,-10.5,OVER,65.5,45,20,2025-12-05
+manual_1,Georgia,Alabama,Alabama @ Georgia,2025-12-06T20:00:00.000Z,Georgia,65.0%,0.65,Georgia (-3.5),DraftKings,58.5%,OVER 54.5,DraftKings,55.0%,Georgia,-3.5,OVER,54.5,42.0,35.0,2025-12-06
+manual_2,Ohio State,Oregon,Oregon @ Ohio State,2025-12-07T19:30:00.000Z,Oregon,52.0%,0.52,Oregon (+3),FanDuel,61.2%,UNDER 60.5,FanDuel,53.0%,Oregon,3.0,UNDER,60.5,24.0,27.0,2025-12-07
+manual_3,Texas,Texas A&M,Texas A&M @ Texas,2025-11-29T15:30:00.000Z,Texas,70.1%,0.701,Texas (-7),BetMGM,56.0%,OVER 58.0,BetMGM,51.5%,Texas,-7.0,OVER,58.0,31.0,17.0,2025-11-29
+manual_4,Clemson,Miami,Miami @ Clemson,2025-12-06T20:00:00.000Z,Miami,51.0%,0.51,Miami (+4.5),Caesars,59.0%,UNDER 49.5,Caesars,62.0%,Miami,4.5,UNDER,49.5,21.0,24.0,2025-12-06
+manual_5,Boise State,UNLV,UNLV @ Boise State,2025-12-05T20:00:00.000Z,Boise State,80.0%,0.8,Boise State (-10.5),DraftKings,54.0%,OVER 65.5,DraftKings,57.0%,Boise State,-10.5,OVER,65.5,45.0,20.0,2025-12-05
+future_1,Michigan,Notre Dame,Notre Dame @ Michigan,2026-01-01T21:00:00.000Z,Michigan,56.5%,0.565,Michigan (-4),DraftKings,53.2%,UNDER 44.5,DraftKings,58.0%,Michigan,-4.0,UNDER,44.5,,,
+future_2,Georgia,Florida State,Florida State @ Georgia,2026-01-01T17:00:00.000Z,Georgia,62.0%,0.62,Georgia (-6.5),FanDuel,55.5%,OVER 51.5,FanDuel,54.0%,Georgia,-6.5,OVER,51.5,,,
+future_3,Penn State,Tennessee,Tennessee @ Penn State,2025-12-29T20:00:00.000Z,Penn State,51.5%,0.515,Tennessee (+2.5),BetMGM,59.0%,OVER 55.0,BetMGM,52.5%,Tennessee,2.5,OVER,55.0,,,
