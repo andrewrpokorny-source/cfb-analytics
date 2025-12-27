@@ -14,7 +14,7 @@ HISTORY_FILE = "live_predictions.csv"
 YEAR = 2025
 VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
 
-# --- 1. THE GOLDEN HISTORY (Hardcoded to ensure it never disappears) ---
+# --- 1. THE GOLDEN HISTORY (Preserve this!) ---
 manual_history = [
     {
         "GameID": "manual_1", "HomeTeam": "Georgia", "AwayTeam": "Alabama", "Game": "Alabama @ Georgia",
@@ -63,12 +63,11 @@ manual_history = [
     }
 ]
 
-# Protect history from being overwritten
+# Protect history
 protected_labels = {f"{g['AwayTeam']} @ {g['HomeTeam']}" for g in manual_history}
 
 def fetch_live(endpoint, params):
     try:
-        # No cache - force fresh data
         res = requests.get(f"https://api.collegefootballdata.com{endpoint}", headers=HEADERS, params=params)
         return res.json() if res.status_code == 200 else []
     except: return []
@@ -81,9 +80,8 @@ def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     return prob
 
 def main():
-    print("--- 🔄 RUNNING FINAL SYNC ---")
+    print("--- 🔄 RUNNING WIDE-NET SYNC ---")
     
-    # 1. Load Models
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
@@ -91,19 +89,27 @@ def main():
     except:
         print("❌ Models missing."); return
 
-    # 2. Fetch Future Games (Postseason + Regular Week 16/17 Safety Net)
-    print("   -> Downloading fresh schedule...")
-    games_post = fetch_live("/games", {"year": YEAR, "seasonType": "postseason"})
-    lines_post = fetch_live("/lines", {"year": YEAR, "seasonType": "postseason"})
+    # --- 2. FETCH FUTURE GAMES (The "Wide Net" Strategy) ---
+    print("   -> Scanning Weeks 15, 16, 17, and Postseason...")
     
-    # Also grab late regular season in case bowls are hidden there
-    games_reg = fetch_live("/games", {"year": YEAR, "seasonType": "regular", "week": 16})
-    lines_reg = fetch_live("/lines", {"year": YEAR, "seasonType": "regular", "week": 16})
+    # List of all possible weeks where bowl games hide
+    scenarios = [
+        {"seasonType": "postseason", "week": 1},
+        {"seasonType": "regular", "week": 16},
+        {"seasonType": "regular", "week": 17},
+        {"seasonType": "regular", "week": 15}
+    ]
     
-    # Combine lists
-    games_data = games_post + games_reg
-    lines_data = lines_post + lines_reg
+    games_data = []
+    lines_data = []
     
+    # Grab them all
+    for s in scenarios:
+        g = fetch_live("/games", {"year": YEAR, **s})
+        l = fetch_live("/lines", {"year": YEAR, **s})
+        if isinstance(g, list): games_data.extend(g)
+        if isinstance(l, list): lines_data.extend(l)
+
     # Fetch Stats
     srs_data = fetch_live("/ratings/srs", {"year": YEAR})
     talent_data = fetch_live("/talent", {"year": YEAR})
@@ -118,16 +124,22 @@ def main():
             lines_map[str(g['id'])] = valid
 
     future_predictions = []
-    print(f"   -> Found {len(games_data)} total games to scan.")
+    seen_games = set() # To avoid duplicates from overlapping scans
+
+    print(f"   -> Found {len(games_data)} potential games. Filtering...")
 
     for g in games_data:
         if not isinstance(g, dict): continue
         
+        gid = str(g.get('id'))
+        if gid in seen_games: continue
+        seen_games.add(gid)
+
         # KEY: Skip if it's already in history
         game_label = f"{g.get('away_team')} @ {g.get('home_team')}"
         if game_label in protected_labels: continue
         
-        # KEY: Skip completed games (we only want future)
+        # KEY: Skip completed games (we only want future on the board)
         if g.get('completed'): continue
         
         home, away = g.get('home_team'), g.get('away_team')
@@ -139,18 +151,17 @@ def main():
         base_row = {
             'home_talent_score': h_tal, 'away_talent_score': a_tal,
             'home_srs_rating': h_srs, 'away_srs_rating': a_srs,
-            **{c: 0.0 for c in feat_cols if 'decay' in c} # Default stats to ensure prediction runs
+            **{c: 0.0 for c in feat_cols if 'decay' in c}
         }
         
         ml_prob = calculate_win_prob(h_srs, a_srs, h_tal, a_tal)
         ml_pick = home if ml_prob > 0.5 else away
         ml_conf = max(ml_prob, 1 - ml_prob)
 
-        game_lines = lines_map.get(str(g.get('id')), [])
+        game_lines = lines_map.get(gid, [])
         best_spread = {"conf": -1, "pick": "Pending", "book": "N/A"}
         best_total = {"conf": -1, "pick": "Pending", "book": "N/A"}
 
-        # Even if no lines, we add the game so it shows on the board
         if game_lines:
             for line in game_lines:
                 if line.get('spread'):
@@ -179,12 +190,11 @@ def main():
                         side = "OVER" if prob > 0.5 else "UNDER"
                         best_total = {"conf": conf, "book": line.get('provider'), "pick": f"{side} {line.get('overUnder')}", "pick_side": side, "pick_val": line.get('overUnder')}
         else:
-             # Default for games with no lines yet (shows "Pending" instead of vanishing)
              best_spread = {"conf": 0.0, "pick": "Pending", "book": "TBD"}
              best_total = {"conf": 0.0, "pick": "Pending", "book": "TBD"}
 
         future_predictions.append({
-            "GameID": str(g.get('id')), "HomeTeam": home, "AwayTeam": away, "Game": game_label,
+            "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": game_label,
             "StartDate": g.get('start_date'),
             "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", "Moneyline_Conf_Raw": ml_conf,
             "Spread Pick": best_spread['pick'], "Spread Book": best_spread['book'], "Spread Conf": f"{best_spread['conf']:.1%}",
@@ -194,7 +204,7 @@ def main():
         })
 
     # 3. MERGE
-    print(f"   -> Merging {len(manual_history)} history + {len(future_predictions)} future games...")
+    print(f"   -> Combining {len(manual_history)} history + {len(future_predictions)} future games...")
     df_history = pd.DataFrame(manual_history)
     df_future = pd.DataFrame(future_predictions)
     
@@ -204,7 +214,7 @@ def main():
         combined = df_history
 
     combined.to_csv(HISTORY_FILE, index=False)
-    print(f"✅ SUCCESS: Final Sync complete. {len(combined)} rows written.")
+    print(f"✅ SUCCESS: Wide-Net Sync complete. {len(combined)} rows written.")
 
 if __name__ == "__main__":
     main()
