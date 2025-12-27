@@ -68,17 +68,24 @@ def build_decay_lookup(year):
     return lookup
 
 def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
-    talent_diff = (home_talent - away_talent) / 20.0
+    """
+    TUNED MATH:
+    - Reduced Talent weight (Divisor 20.0 -> 50.0) to stop over-valuing underachieving blue-bloods.
+    - This allows Indiana (High SRS, Low Talent) to be properly favored over Alabama.
+    """
+    talent_diff = (home_talent - away_talent) / 50.0 
     srs_diff = home_srs - away_srs
-    hfa = 1.0 
+    hfa = 0.0 # Neutral field for Bowls/Playoffs
+    
     total_edge = srs_diff + talent_diff + hfa
+    
     try: prob = 1 / (1 + math.exp(-1 * total_edge / 7.5))
     except: prob = 0.5
     return prob
 
 # --- 3. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB QUANT ENGINE: TIME FIX ---")
+    print("--- 🏈 CFB QUANT ENGINE: TUNED ANALYTICS ---")
     YEAR = 2025
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -107,10 +114,10 @@ def main():
     for g in games_data:
         if g.get('completed'): continue
         gid = str(g.get('id'))
+        
+        # Name Matching
         home = g.get('home_team') or g.get('homeTeam')
         away = g.get('away_team') or g.get('awayTeam')
-        
-        # --- NEW: Grab Start Date ---
         start_date = g.get('start_date') or g.get('startDate')
 
         if not home or not away: continue
@@ -128,7 +135,7 @@ def main():
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        # 1. Moneyline (Logistic)
+        # 1. Moneyline (TUNED)
         ml_win_prob = calculate_win_prob(h_srs, a_srs, h_tal, a_tal)
         ml_pick = home if ml_win_prob > 0.5 else away
         ml_conf = max(ml_win_prob, 1 - ml_win_prob)
@@ -167,7 +174,7 @@ def main():
 
         current_week_preds.append({
             "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
-            "StartDate": start_date,  # <-- SAVED HERE
+            "StartDate": start_date,
             "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", "Moneyline_Conf_Raw": ml_conf,
             "Spread Pick": best_spread['pick'], "Spread Book": best_spread['book'], "Spread Conf": f"{best_spread['conf']:.1%}",
             "Total Pick": best_total['pick'], "Total Book": best_total['book'], "Total Conf": f"{best_total['conf']:.1%}",
@@ -192,7 +199,7 @@ def main():
         combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
         
         combined_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Updated database with {generated_count} active predictions (w/ Timestamps).")
+        print(f"✅ SUCCESS: Updated database with {generated_count} Tuned predictions.")
     else:
         print("⚠️ Warning: No predictions generated.")
 
