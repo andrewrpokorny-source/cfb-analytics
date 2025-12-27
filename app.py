@@ -1,39 +1,66 @@
 import streamlit as st
 import pandas as pd
 import requests
+import os
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 
 # --- CONFIG ---
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 st.title("🏈 CFB Quant Engine: Triple Threat Dashboard")
 
+# Load environment variables for local dev
+load_dotenv()
+
 @st.cache_data(ttl=300) 
 def fetch_scores():
+    # 1. Try Local .env
+    api_key = os.getenv("CFBD_API_KEY")
+    
+    # 2. Try Streamlit Secrets (Cloud)
+    if not api_key:
+        try: api_key = st.secrets["CFBD_API_KEY"]
+        except: pass
+        
+    if not api_key:
+        st.error("❌ API Key Not Found. Check .env or secrets.toml")
+        return {}
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+    
     try:
-        api_key = st.secrets["CFBD_API_KEY"]
-        headers = {"Authorization": f"Bearer {api_key}"}
+        # Fetch Regular Season
         res_reg = requests.get("https://api.collegefootballdata.com/games", 
                                headers=headers, params={"year": 2025, "seasonType": "regular"})
+        
+        # Fetch Postseason
         res_post = requests.get("https://api.collegefootballdata.com/games", 
                                 headers=headers, params={"year": 2025, "seasonType": "postseason"})
+        
         games_dict = {}
         if res_reg.status_code == 200:
             for g in res_reg.json(): games_dict[str(g['id'])] = g
         if res_post.status_code == 200:
             for g in res_post.json(): games_dict[str(g['id'])] = g
+            
         return games_dict
-    except: return {}
+    except Exception as e:
+        st.error(f"API Error: {e}")
+        return {}
 
 @st.cache_data(ttl=0)
 def load_picks():
     try:
         df = pd.read_csv("live_predictions.csv")
+        # Ensure GameID is a clean string
         if 'GameID' in df.columns:
             df = df.dropna(subset=['GameID'])
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         return df
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
+# --- MAIN LOGIC ---
 df = load_picks()
 scores = fetch_scores()
 
@@ -50,14 +77,19 @@ if not df.empty:
         home_score, away_score = 0, 0
         date_str = "N/A"
         
+        # CHECK 1: Live API Status
         if game and game.get('status') == 'completed':
             is_completed = True
             home_score = game.get('home_points', 0)
             away_score = game.get('away_points', 0)
             date_str = game.get('start_date', 'N/A')[:10]
+            
+        # CHECK 2: Manual Backfill Status (Fallback)
         elif 'Manual_HomeScore' in row and pd.notnull(row['Manual_HomeScore']):
             try:
-                if float(row['Manual_HomeScore']) >= 0:
+                # Check if score exists (it might be 0, so check not null)
+                h = row['Manual_HomeScore']
+                if pd.notnull(h) and str(h).strip() != '':
                     is_completed = True
                     home_score = int(float(row['Manual_HomeScore']))
                     away_score = int(float(row['Manual_AwayScore']))
@@ -72,18 +104,36 @@ if not df.empty:
             pick_team = row.get('Pick_Team', '')
             try: line = float(row.get('Pick_Line', 0))
             except: line = 0.0
-            margin = (home_score - away_score) if pick_team == row['HomeTeam'] else (away_score - home_score)
-            diff = margin + line
-            spr_res = "WIN" if diff > 0 else "LOSS" if diff < 0 else "PUSH"
+            
+            # Calculate Margin relative to Home Team
+            real_margin = home_score - away_score
+            
+            # If we picked Home, we need (Margin + Spread) > 0
+            if pick_team == row['HomeTeam']:
+                adj_margin = real_margin + line
+            # If we picked Away, we need (AwayScore - HomeScore - Spread) > 0
+            # Or simpler: Did the pick cover?
+            # Let's align with standard logic:
+            else:
+                # Picked Away. 
+                # e.g. Away +6.5. Away loses by 6 (-6 margin). -6 + 6.5 = +0.5 (Win).
+                # Reverse the margin for Away perspective
+                adj_margin = (away_score - home_score) + line
+
+            if adj_margin > 0: spr_res = "WIN"
+            elif adj_margin < 0: spr_res = "LOSS"
+            else: spr_res = "PUSH"
 
             # Grade Total
             try: pick_total = float(row.get('Pick_Total', 0))
             except: pick_total = 0.0
             pick_side = row.get('Pick_Side', '')
             tot_score = home_score + away_score
+            
             if tot_score == pick_total: tot_res = "PUSH"
             elif pick_side == "OVER": tot_res = "WIN" if tot_score > pick_total else "LOSS"
-            else: tot_res = "WIN" if tot_score < pick_total else "LOSS"
+            elif pick_side == "UNDER": tot_res = "WIN" if tot_score < pick_total else "LOSS"
+            else: tot_res = "N/A"
 
             # Grade Straight Up
             ml_pick = row.get('Moneyline Pick', 'N/A')
@@ -104,11 +154,7 @@ if not df.empty:
         # --- B. UPCOMING GAMES ---
         else:
             new_row = row.copy()
-            # 1. Try Live API Date
-            start_str = game.get('start_date') if game else None
-            # 2. Fallback to Database Date
-            if not start_str:
-                start_str = row.get('StartDate')
+            start_str = game.get('start_date') if game else row.get('StartDate')
             
             show_game = True
             if start_str and pd.notnull(start_str):
@@ -124,7 +170,6 @@ if not df.empty:
                 new_row['Time'] = "TBD"
             
             if show_game:
-                new_row['Source'] = str(row.get('Spread Book', 'DK')).replace("DraftKings", "DK")
                 upcoming_games.append(new_row)
 
 # --- DISPLAY ---
@@ -154,7 +199,6 @@ with tab1:
         with c3:
             st.markdown("#### ↕️ Total")
             st.dataframe(up_df[['Game', 'Total Pick', 'Total Conf']].style.map(color_conf, subset=['Total Conf']), hide_index=True, use_container_width=True)
-
     else:
         st.info("No active games found.")
 
@@ -163,11 +207,10 @@ with tab2:
         res_df = pd.DataFrame(graded_results)
         res_df = res_df.sort_values(by='Date', ascending=False)
         
-        # --- FIXED SYNTAX HERE ---
         su_wins = len(res_df[res_df['SU Result'] == 'WIN'])
         su_loss = len(res_df[res_df['SU Result'] == 'LOSS'])
-        
         su_pct = (su_wins/(su_wins+su_loss)*100) if (su_wins+su_loss) > 0 else 0
+        
         s_wins = len(res_df[res_df['Spread Result'] == 'WIN'])
         s_loss = len(res_df[res_df['Spread Result'] == 'LOSS'])
         
