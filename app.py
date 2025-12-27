@@ -34,38 +34,38 @@ def fetch_scores():
 def load_data():
     try:
         df = pd.read_csv("live_predictions.csv")
-        # Ensure GameID is string for matching
+        # Normalize GameID
         if 'GameID' in df.columns:
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         return df
     except: return pd.DataFrame()
+
+def color_conf(val):
+    # Highlight high confidence
+    try:
+        score = float(str(val).strip('%'))
+        if score >= 60: return 'background-color: #1b5e20; color: white' 
+        if score >= 55: return 'background-color: #4caf50; color: black' 
+    except: pass
+    return ''
 
 def color_result(val):
     if val == 'WIN': return 'color: #2e7d32; font-weight: bold'
     if val == 'LOSS': return 'color: #d32f2f; font-weight: bold'
     return 'color: gray'
 
-def color_conf(val):
-    try:
-        score = float(str(val).strip('%'))
-        if score >= 60: return 'background-color: #1b5e20; color: white' # Dark Green
-        if score >= 55: return 'background-color: #4caf50; color: black' # Green
-    except: pass
-    return ''
-
-# --- MAIN ---
+# --- MAIN LOGIC ---
 df = load_data()
 scores = fetch_scores()
 
 if df.empty:
-    st.warning("⚠️ No predictions found. (live_predictions.csv is empty or missing)")
+    st.warning("⚠️ No predictions found. (live_predictions.csv is empty)")
     st.stop()
 
 graded = []
 upcoming = []
 
 for _, row in df.iterrows():
-    # 1. Determine Status (Completed vs Upcoming)
     gid = str(row.get("GameID"))
     api_data = scores.get(gid, {})
     
@@ -73,45 +73,36 @@ for _, row in df.iterrows():
     h_score = 0
     a_score = 0
     
-    # Priority A: Live API says completed
+    # Check Completion (API or Manual)
     if api_data.get('status') == 'completed':
         is_completed = True
         h_score = api_data.get('home_points', 0)
         a_score = api_data.get('away_points', 0)
-    
-    # Priority B: Manual Override (Historical Backfill)
     elif pd.notnull(row.get('Manual_HomeScore')):
         is_completed = True
         h_score = row['Manual_HomeScore']
         a_score = row['Manual_AwayScore']
 
-    # 2. Logic Branch
     if is_completed:
-        # Grading Logic
+        # --- GRADING ---
         winner = row['HomeTeam'] if h_score > a_score else row['AwayTeam']
         
-        # Spread Grade
+        # Grade Spread
         spread_res = "PUSH"
         if pd.notnull(row.get('Pick_Line')):
-            pick_team = row['Pick_Team']
-            line = float(row['Pick_Line'])
-            
-            # Calculate Margin from Pick Team's perspective
-            if pick_team == row['HomeTeam']:
-                margin = (h_score - a_score) + line
-            else:
-                margin = (a_score - h_score) + line
-                
+            pick_team = row.get('Pick_Team')
+            line = float(row.get('Pick_Line', 0))
+            if pick_team == row['HomeTeam']: margin = (h_score - a_score) + line
+            else: margin = (a_score - h_score) + line
             if margin > 0: spread_res = "WIN"
             elif margin < 0: spread_res = "LOSS"
 
-        # Total Grade
+        # Grade Total
         total_res = "PUSH"
         if pd.notnull(row.get('Pick_Total')):
             actual_total = h_score + a_score
             target = float(row['Pick_Total'])
-            side = row['Pick_Side']
-            
+            side = row.get('Pick_Side')
             if side == 'OVER': total_res = "WIN" if actual_total > target else "LOSS"
             elif side == 'UNDER': total_res = "WIN" if actual_total < target else "LOSS"
             if actual_total == target: total_res = "PUSH"
@@ -128,8 +119,8 @@ for _, row in df.iterrows():
         })
         
     else:
-        # Upcoming
-        # Format Date
+        # --- UPCOMING ---
+        # NO FILTERING: We show everything that isn't graded.
         ts = row.get('StartDate')
         try:
             dt = pd.to_datetime(ts)
@@ -140,42 +131,37 @@ for _, row in df.iterrows():
         row['Time'] = fmt_time
         upcoming.append(row)
 
-# --- TABS ---
+# --- DISPLAY ---
 t1, t2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"])
 
 with t1:
     if upcoming:
         up_df = pd.DataFrame(upcoming)
-        # Sort by date
-        if 'StartDate' in up_df.columns: up_df = up_df.sort_values('StartDate')
+        # Sort by date (Ascending) so today/tomorrow are at the top
+        if 'StartDate' in up_df.columns: 
+            up_df = up_df.sort_values('StartDate', ascending=True)
+        
+        st.markdown(f"### 📅 Upcoming Schedule ({len(up_df)} Games)")
         
         c1, c2, c3 = st.columns(3)
-        
         with c1:
             st.markdown("#### 🏆 Straight Up")
             st.dataframe(up_df[['Time', 'Game', 'Moneyline Pick', 'Moneyline Conf']].style.map(color_conf, subset=['Moneyline Conf']), hide_index=True)
-            
         with c2:
             st.markdown("#### ⚖️ Spread")
             st.dataframe(up_df[['Game', 'Spread Pick', 'Spread Conf']].style.map(color_conf, subset=['Spread Conf']), hide_index=True)
-            
         with c3:
             st.markdown("#### ↕️ Total")
             st.dataframe(up_df[['Game', 'Total Pick', 'Total Conf']].style.map(color_conf, subset=['Total Conf']), hide_index=True)
     else:
-        st.info("No upcoming games scheduled.")
+        st.info("No upcoming games found in the database.")
 
 with t2:
     if graded:
         res_df = pd.DataFrame(graded)
-        
-        # KPI Cards
         wins = len(res_df[res_df['Res (Spr)'] == 'WIN'])
         losses = len(res_df[res_df['Res (Spr)'] == 'LOSS'])
-        
-        k1, k2 = st.columns(2)
-        k1.metric("Spread Record", f"{wins}-{losses}")
-        
+        st.metric("Spread Record", f"{wins}-{losses}")
         st.dataframe(res_df.style.map(color_result, subset=['Res (SU)', 'Res (Spr)', 'Res (Tot)']), hide_index=True, use_container_width=True)
     else:
-        st.info("No history yet.")
+        st.info("No graded history yet.")
