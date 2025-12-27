@@ -18,23 +18,17 @@ VALID_BOOKS = [
 ]
 HISTORY_FILE = "live_predictions.csv"
 
-# TEAM NAME MAPPING
 TEAM_MAP = {
-    "USF": "South Florida",
-    "Ole Miss": "Mississippi",
-    "LSU": "Louisiana State",
-    "UConn": "Connecticut",
-    "UMass": "Massachusetts",
-    "Southern Miss": "Southern Mississippi",
-    "UL Monroe": "Louisiana Monroe",
+    "USF": "South Florida", "Ole Miss": "Mississippi", "LSU": "Louisiana State",
+    "UConn": "Connecticut", "UMass": "Massachusetts", 
+    "Southern Miss": "Southern Mississippi", "UL Monroe": "Louisiana Monroe", 
     "UL Lafayette": "Louisiana"
 }
 
-# --- 2. CACHING & UTILS ---
+# --- 2. CACHING ---
 def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
     if os.path.exists(filename):
-        last_modified = os.path.getmtime(filename)
-        if (time.time() - last_modified) < (max_age_hours * 3600):
+        if (time.time() - os.path.getmtime(filename)) < (max_age_hours * 3600):
             try:
                 with open(filename, 'r') as f: return json.load(f)
             except: pass
@@ -45,28 +39,13 @@ def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
             time.sleep(1.5)
             response = requests.get(url, headers=HEADERS, params=params)
             if response.status_code == 429:
-                time.sleep(60)
-                continue
+                time.sleep(60); continue
             response.raise_for_status()
             data = response.json()
             with open(filename, 'w') as f: json.dump(data, f)
             return data
-        except Exception as e:
-            time.sleep(2)
+        except: time.sleep(2)
     return []
-
-def get_current_week(year, season_type):
-    try:
-        cal = fetch_with_cache(f"cache_calendar_{year}.json", "/calendar", {"year": year})
-        today = datetime.datetime.now().isoformat()
-        for w in cal:
-            if w['seasonType'] == season_type and w['firstGameStart'] <= today <= w['lastGameStart']:
-                return w['week']
-        for w in cal:
-            if w['seasonType'] == season_type and w['firstGameStart'] > today:
-                return w['week']
-    except: pass
-    return 1
 
 def build_decay_lookup(year):
     print("   -> Fetching Advanced Stats...")
@@ -88,23 +67,20 @@ def build_decay_lookup(year):
 
 # --- 3. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB QUANT ENGINE: TRIPLE THREAT UPDATE ---")
+    print("--- 🏈 CFB QUANT ENGINE: POSTSEASON FIX ---")
     YEAR = 2025
-    SEASON_TYPE = "postseason"
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
     except: 
-        print("❌ Models not found.")
-        return
+        print("❌ Models not found."); return
 
-    WEEK = get_current_week(YEAR, SEASON_TYPE)
-    print(f"   -> Analyzing {SEASON_TYPE} Week {WEEK}...")
-
-    # Fetch Data
-    games_data = fetch_with_cache(f"cache_games_w{WEEK}.json", "/games", {"year": YEAR, "seasonType": SEASON_TYPE, "week": WEEK})
-    lines_data = fetch_with_cache(f"cache_lines_w{WEEK}.json", "/lines", {"year": YEAR, "seasonType": SEASON_TYPE, "week": WEEK})
+    # FIX: Fetch ALL postseason games, ignore 'Week'
+    print(f"   -> Fetching full postseason schedule...")
+    games_data = fetch_with_cache(f"cache_games_post_{YEAR}.json", "/games", {"year": YEAR, "seasonType": "postseason"})
+    lines_data = fetch_with_cache(f"cache_lines_post_{YEAR}.json", "/lines", {"year": YEAR, "seasonType": "postseason"})
+    
     srs_data = fetch_with_cache(f"cache_srs_{YEAR}.json", "/ratings/srs", {"year": YEAR})
     talent_data = fetch_with_cache(f"cache_talent_{YEAR}.json", "/talent", {"year": YEAR})
     
@@ -118,10 +94,12 @@ def main():
         shopping_cart[g['id']] = valid_lines
 
     current_week_preds = []
-    print(f"   -> Generating Predictions for {len(games_data)} games...")
+    print(f"   -> Scanning {len(games_data)} games for active matchups...")
 
     for g in games_data:
+        # Skip games that are already done
         if g.get('completed'): continue
+        
         gid = str(g.get('id'))
         home, away = g.get('home_team'), g.get('away_team')
         
@@ -138,89 +116,64 @@ def main():
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        # --- A. STRAIGHT UP WINNER CALCULATION ---
-        # We simulate the game with Spread = 0.0 to find the pure winner
+        # --- STRAIGHT UP (MONEYLINE) ---
         ml_row = base_row.copy()
         ml_row['spread'] = 0.0
-        ml_row['overUnder'] = 55.5 # Neutral total
+        ml_row['overUnder'] = 55.5
         for col in model_spread.feature_names_in_:
             if col not in ml_row: ml_row[col] = 0.0
             
         ml_probs = model_spread.predict_proba(pd.DataFrame([ml_row])[model_spread.feature_names_in_])[0]
-        # ml_probs[1] is Home Win Prob
         ml_win_prob = ml_probs[1]
-        ml_conf = max(ml_win_prob, 1 - ml_win_prob)
         ml_pick = home if ml_win_prob > 0.5 else away
+        ml_conf = max(ml_win_prob, 1 - ml_win_prob)
 
-        # --- B. SPREAD & TOTAL CALCULATION ---
+        # --- SPREAD & TOTAL ---
         best_spread = {"conf": -1, "pick": "N/A", "book": "N/A"}
         best_total = {"conf": -1, "pick": "N/A", "book": "N/A"}
 
         for line in lines:
-            # Spread Logic
             if line.get('spread') is not None:
                 row = base_row.copy()
                 row['spread'] = line.get('spread')
                 row['overUnder'] = line.get('overUnder', 55.5)
                 for col in model_spread.feature_names_in_:
                     if col not in row: row[col] = 0.0
-                
                 sp_prob = model_spread.predict_proba(pd.DataFrame([row])[model_spread.feature_names_in_])[0][1]
                 s_conf = max(sp_prob, 1-sp_prob)
-                
                 if s_conf > best_spread['conf']:
                     p_team = home if sp_prob > 0.5 else away
                     p_line = line.get('spread') if sp_prob > 0.5 else -1 * line.get('spread')
                     fmt = f"+{p_line}" if p_line > 0 else f"{p_line}"
-                    best_spread = {
-                        "conf": s_conf, "book": line.get('provider'),
-                        "pick": f"{p_team} ({fmt})", "raw_line": p_line, "pick_team": p_team
-                    }
+                    best_spread = {"conf": s_conf, "book": line.get('provider'), "pick": f"{p_team} ({fmt})", "raw_line": p_line, "pick_team": p_team}
 
-            # Total Logic
             if line.get('overUnder') is not None:
                 row = base_row.copy()
                 row['spread'] = line.get('spread', 0.0)
                 row['overUnder'] = line.get('overUnder')
                 for col in model_total.feature_names_in_:
                     if col not in row: row[col] = 0.0
-                
                 t_prob = model_total.predict_proba(pd.DataFrame([row])[model_total.feature_names_in_])[0][1]
                 t_conf = max(t_prob, 1-t_prob)
-                
                 if t_conf > best_total['conf']:
                     side = "OVER" if t_prob > 0.5 else "UNDER"
-                    best_total = {
-                        "conf": t_conf, "book": line.get('provider'),
-                        "pick": f"{side} {line.get('overUnder')}", 
-                        "pick_side": side, "pick_val": line.get('overUnder')
-                    }
+                    best_total = {"conf": t_conf, "book": line.get('provider'), "pick": f"{side} {line.get('overUnder')}", "pick_side": side, "pick_val": line.get('overUnder')}
 
         if best_spread['conf'] != -1:
             current_week_preds.append({
                 "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
-                
-                # SPREAD
                 "Spread Pick": best_spread['pick'], "Spread Book": best_spread['book'],
                 "Spread Conf": f"{best_spread['conf']:.1%}", "Spread_Conf_Raw": best_spread['conf'],
                 "Pick_Team": best_spread['pick_team'], "Pick_Line": best_spread.get('raw_line',0),
-                
-                # TOTAL
                 "Total Pick": best_total['pick'], "Total Book": best_total['book'],
                 "Total Conf": f"{best_total['conf']:.1%}", "Total_Conf_Raw": best_total['conf'],
                 "Pick_Side": best_total.get('pick_side',''), "Pick_Total": best_total.get('pick_val',0),
-
-                # NEW: STRAIGHT UP (MONEYLINE)
-                "Moneyline Pick": ml_pick,
-                "Moneyline Conf": f"{ml_conf:.1%}",
-                "Moneyline_Conf_Raw": ml_conf
+                "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", "Moneyline_Conf_Raw": ml_conf
             })
 
-    # Save & Merge
     if current_week_preds:
         new_df = pd.DataFrame(current_week_preds)
         new_df['GameID'] = new_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
-        
         if os.path.exists(HISTORY_FILE):
             history_df = pd.read_csv(HISTORY_FILE)
             history_df['GameID'] = history_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -230,14 +183,12 @@ def main():
         
         combined_df['HomeTeam'] = combined_df['HomeTeam'].replace(TEAM_MAP)
         combined_df['AwayTeam'] = combined_df['AwayTeam'].replace(TEAM_MAP)
-        
         combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
         combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
-
         combined_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Updated with {len(current_week_preds)} predictions (Spread + Total + ML).")
+        print(f"✅ SUCCESS: Updated with {len(current_week_preds)} new predictions.")
     else:
-        print("   (No active games found)")
+        print("   (No active games found - Check if Schedule is correct)")
 
 if __name__ == "__main__":
     main()
