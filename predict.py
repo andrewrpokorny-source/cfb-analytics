@@ -18,6 +18,7 @@ VALID_BOOKS = [
 ]
 HISTORY_FILE = "live_predictions.csv"
 
+# Normalization Map
 TEAM_MAP = {
     "USF": "South Florida", "Ole Miss": "Mississippi", "LSU": "Louisiana State",
     "UConn": "Connecticut", "UMass": "Massachusetts", 
@@ -61,26 +62,26 @@ def build_decay_lookup(year):
     for team, group in df.groupby('team'):
         team_mom = {}
         for m in metrics:
-            team_mom[f"decay_{m}"] = group[m].ewm(span=3, adjust=False).mean().iloc[-1] if m in group.columns else 0.0
+            val = group[m].ewm(span=3, adjust=False).mean().iloc[-1] if m in group.columns else 0.0
+            team_mom[f"decay_{m}"] = val
         lookup[team] = team_mom
     return lookup
 
 # --- 3. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB QUANT ENGINE: POSTSEASON FIX ---")
+    print("--- 🏈 CFB QUANT ENGINE: ROBUST POSTSEASON ---")
     YEAR = 2025
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
+        feat_cols = model_spread.feature_names_in_
     except: 
         print("❌ Models not found."); return
 
-    # FIX: Fetch ALL postseason games, ignore 'Week'
-    print(f"   -> Fetching full postseason schedule...")
+    # Fetch Data
     games_data = fetch_with_cache(f"cache_games_post_{YEAR}.json", "/games", {"year": YEAR, "seasonType": "postseason"})
     lines_data = fetch_with_cache(f"cache_lines_post_{YEAR}.json", "/lines", {"year": YEAR, "seasonType": "postseason"})
-    
     srs_data = fetch_with_cache(f"cache_srs_{YEAR}.json", "/ratings/srs", {"year": YEAR})
     talent_data = fetch_with_cache(f"cache_talent_{YEAR}.json", "/talent", {"year": YEAR})
     
@@ -94,21 +95,23 @@ def main():
         shopping_cart[g['id']] = valid_lines
 
     current_week_preds = []
-    print(f"   -> Scanning {len(games_data)} games for active matchups...")
+    print(f"   -> Scanning {len(games_data)} games...")
+    
+    skipped_completed = 0
+    generated_count = 0
 
     for g in games_data:
-        # Skip games that are already done
-        if g.get('completed'): continue
+        if g.get('completed'): 
+            skipped_completed += 1
+            continue
         
         gid = str(g.get('id'))
         home, away = g.get('home_team'), g.get('away_team')
         
-        lines = shopping_cart.get(int(gid), [])
-        if not lines: continue
+        # ROBUST STATS: Default to empty dict if missing (Don't skip!)
+        h_d = decay_map.get(home, {})
+        a_d = decay_map.get(away, {})
         
-        h_d, a_d = decay_map.get(home), decay_map.get(away)
-        if not h_d or not a_d: continue
-
         # Base Features
         base_row = {
             'home_talent_score': talent_map.get(home, 10), 'away_talent_score': talent_map.get(away, 10),
@@ -116,37 +119,45 @@ def main():
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        # --- STRAIGHT UP (MONEYLINE) ---
+        # --- 1. ALWAYS PREDICT STRAIGHT UP (Even if no lines) ---
         ml_row = base_row.copy()
         ml_row['spread'] = 0.0
         ml_row['overUnder'] = 55.5
-        for col in model_spread.feature_names_in_:
+        for col in feat_cols:
             if col not in ml_row: ml_row[col] = 0.0
-            
-        ml_probs = model_spread.predict_proba(pd.DataFrame([ml_row])[model_spread.feature_names_in_])[0]
-        ml_win_prob = ml_probs[1]
-        ml_pick = home if ml_win_prob > 0.5 else away
-        ml_conf = max(ml_win_prob, 1 - ml_win_prob)
+        
+        try:
+            ml_probs = model_spread.predict_proba(pd.DataFrame([ml_row])[feat_cols])[0]
+            ml_pick = home if ml_probs[1] > 0.5 else away
+            ml_conf = max(ml_probs[1], 1 - ml_probs[1])
+        except:
+            continue
 
-        # --- SPREAD & TOTAL ---
+        # --- 2. PREDICT SPREAD/TOTAL (If lines exist) ---
+        lines = shopping_cart.get(int(gid), [])
+        
         best_spread = {"conf": -1, "pick": "N/A", "book": "N/A"}
         best_total = {"conf": -1, "pick": "N/A", "book": "N/A"}
 
         for line in lines:
+            # Spread
             if line.get('spread') is not None:
                 row = base_row.copy()
                 row['spread'] = line.get('spread')
                 row['overUnder'] = line.get('overUnder', 55.5)
-                for col in model_spread.feature_names_in_:
+                for col in feat_cols:
                     if col not in row: row[col] = 0.0
-                sp_prob = model_spread.predict_proba(pd.DataFrame([row])[model_spread.feature_names_in_])[0][1]
+                
+                sp_prob = model_spread.predict_proba(pd.DataFrame([row])[feat_cols])[0][1]
                 s_conf = max(sp_prob, 1-sp_prob)
+                
                 if s_conf > best_spread['conf']:
                     p_team = home if sp_prob > 0.5 else away
                     p_line = line.get('spread') if sp_prob > 0.5 else -1 * line.get('spread')
                     fmt = f"+{p_line}" if p_line > 0 else f"{p_line}"
                     best_spread = {"conf": s_conf, "book": line.get('provider'), "pick": f"{p_team} ({fmt})", "raw_line": p_line, "pick_team": p_team}
 
+            # Total
             if line.get('overUnder') is not None:
                 row = base_row.copy()
                 row['spread'] = line.get('spread', 0.0)
@@ -159,18 +170,19 @@ def main():
                     side = "OVER" if t_prob > 0.5 else "UNDER"
                     best_total = {"conf": t_conf, "book": line.get('provider'), "pick": f"{side} {line.get('overUnder')}", "pick_side": side, "pick_val": line.get('overUnder')}
 
-        if best_spread['conf'] != -1:
-            current_week_preds.append({
-                "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
-                "Spread Pick": best_spread['pick'], "Spread Book": best_spread['book'],
-                "Spread Conf": f"{best_spread['conf']:.1%}", "Spread_Conf_Raw": best_spread['conf'],
-                "Pick_Team": best_spread['pick_team'], "Pick_Line": best_spread.get('raw_line',0),
-                "Total Pick": best_total['pick'], "Total Book": best_total['book'],
-                "Total Conf": f"{best_total['conf']:.1%}", "Total_Conf_Raw": best_total['conf'],
-                "Pick_Side": best_total.get('pick_side',''), "Pick_Total": best_total.get('pick_val',0),
-                "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", "Moneyline_Conf_Raw": ml_conf
-            })
+        # Add Prediction (Even if lines are missing, we add the ML pick)
+        current_week_preds.append({
+            "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
+            "Moneyline Pick": ml_pick, "Moneyline Conf": f"{ml_conf:.1%}", "Moneyline_Conf_Raw": ml_conf,
+            "Spread Pick": best_spread['pick'], "Spread Book": best_spread['book'], "Spread Conf": f"{best_spread['conf']:.1%}",
+            "Total Pick": best_total['pick'], "Total Book": best_total['book'], "Total Conf": f"{best_total['conf']:.1%}",
+            "Pick_Team": best_spread.get('pick_team', ''), "Pick_Line": best_spread.get('raw_line', 0),
+            "Pick_Side": best_total.get('pick_side', ''), "Pick_Total": best_total.get('pick_val', 0)
+        })
+        generated_count += 1
 
+    print(f"   -> Skipped {skipped_completed} completed games.")
+    
     if current_week_preds:
         new_df = pd.DataFrame(current_week_preds)
         new_df['GameID'] = new_df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -185,10 +197,11 @@ def main():
         combined_df['AwayTeam'] = combined_df['AwayTeam'].replace(TEAM_MAP)
         combined_df = combined_df.drop_duplicates(subset=['GameID'], keep='first')
         combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
+        
         combined_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Updated with {len(current_week_preds)} new predictions.")
+        print(f"✅ SUCCESS: Updated database with {generated_count} active predictions.")
     else:
-        print("   (No active games found - Check if Schedule is correct)")
+        print("⚠️ Warning: No predictions generated. Is the API returning games?")
 
 if __name__ == "__main__":
     main()
