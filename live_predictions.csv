@@ -1,0 +1,9 @@
+GameID,HomeTeam,AwayTeam,Game,StartDate,Moneyline Pick,Moneyline Conf,Spread Pick,Spread Book,Spread Conf,Total Pick,Total Book,Total Conf,Pick_Team,Pick_Line,Pick_Side,Pick_Total,Manual_HomeScore,Manual_AwayScore,Manual_Date
+manual_1,Georgia,Alabama,Alabama @ Georgia,2025-12-06T20:00:00.000Z,Georgia,65.0%,Georgia (-3.5),DraftKings,58.5%,OVER 54.5,DraftKings,55.0%,Georgia,-3.5,OVER,54.5,42,35,2025-12-06
+manual_2,Ohio State,Oregon,Oregon @ Ohio State,2025-12-07T19:30:00.000Z,Oregon,52.0%,Oregon (+3),FanDuel,61.2%,UNDER 60.5,FanDuel,53.0%,Oregon,3.0,UNDER,60.5,24,27,2025-12-07
+manual_3,Texas,Texas A&M,Texas A&M @ Texas,2025-11-29T15:30:00.000Z,Texas,70.1%,Texas (-7),BetMGM,56.0%,OVER 58.0,BetMGM,51.5%,Texas,-7.0,OVER,58.0,31,17,2025-11-29
+manual_4,Clemson,Miami,Miami @ Clemson,2025-12-06T20:00:00.000Z,Miami,51.0%,Miami (+4.5),Caesars,59.0%,UNDER 49.5,Caesars,62.0%,Miami,4.5,UNDER,49.5,21,24,2025-12-06
+manual_5,Boise State,UNLV,UNLV @ Boise State,2025-12-05T20:00:00.000Z,Boise State,80.0%,Boise State (-10.5),DraftKings,54.0%,OVER 65.5,DraftKings,57.0%,Boise State,-10.5,OVER,65.5,45,20,2025-12-05
+fut_1,Kansas State,Iowa State,Iowa State @ Kansas State,2026-01-01T15:00:00.000Z,Kansas State,58.5%,Kansas State (-3.5),DraftKings,54.2%,OVER 52.5,DraftKings,57.1%,Kansas State,-3.5,OVER,52.5,,,
+fut_2,Arizona,Oklahoma,Oklahoma @ Arizona,2026-01-02T19:00:00.000Z,Arizona,62.0%,Arizona (-4.0),FanDuel,59.5%,OVER 61.0,FanDuel,53.0%,Arizona,-4.0,OVER,61.0,,,
+fut_3,Michigan,Notre Dame,Notre Dame @ Michigan,2026-01-05T20:00:00.000Z,Michigan,51.5%,Notre Dame (+2.5),BetMGM,52.8%,UNDER 45.5,BetMGM,56.5%,Notre Dame,2.5,UNDER,45.5,,,
