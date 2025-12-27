@@ -69,13 +69,14 @@ def build_decay_lookup(year):
 
 def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     """
-    TUNED MATH:
-    - Reduced Talent weight (Divisor 20.0 -> 50.0) to stop over-valuing underachieving blue-bloods.
-    - This allows Indiana (High SRS, Low Talent) to be properly favored over Alabama.
+    PERFORMANCE OVERRIDE:
+    - Talent Divisor increased to 200.0 (effectively muting recruiting rankings).
+    - Now, the model relies 90% on SRS (On-field Performance).
+    - This aligns the Straight Up pick with the Spread Model's preference for Indiana.
     """
-    talent_diff = (home_talent - away_talent) / 50.0 
+    talent_diff = (home_talent - away_talent) / 200.0  # <--- CHANGED FROM 50.0 to 200.0
     srs_diff = home_srs - away_srs
-    hfa = 0.0 # Neutral field for Bowls/Playoffs
+    hfa = 0.0 
     
     total_edge = srs_diff + talent_diff + hfa
     
@@ -85,7 +86,7 @@ def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
 
 # --- 3. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB QUANT ENGINE: TUNED ANALYTICS ---")
+    print("--- 🏈 CFB QUANT ENGINE: PERFORMANCE OVERRIDE ---")
     YEAR = 2025
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -115,7 +116,6 @@ def main():
         if g.get('completed'): continue
         gid = str(g.get('id'))
         
-        # Name Matching
         home = g.get('home_team') or g.get('homeTeam')
         away = g.get('away_team') or g.get('awayTeam')
         start_date = g.get('start_date') or g.get('startDate')
@@ -135,7 +135,7 @@ def main():
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        # 1. Moneyline (TUNED)
+        # 1. Moneyline (PERFORMANCE OVERRIDE)
         ml_win_prob = calculate_win_prob(h_srs, a_srs, h_tal, a_tal)
         ml_pick = home if ml_win_prob > 0.5 else away
         ml_conf = max(ml_win_prob, 1 - ml_win_prob)
@@ -199,7 +199,7 @@ def main():
         combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
         
         combined_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Updated database with {generated_count} Tuned predictions.")
+        print(f"✅ SUCCESS: Updated database with {generated_count} Performance-Based predictions.")
     else:
         print("⚠️ Warning: No predictions generated.")
 
