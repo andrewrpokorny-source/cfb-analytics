@@ -5,6 +5,7 @@ import requests
 import datetime
 import time
 import json
+import math
 from dotenv import load_dotenv
 
 # --- 1. SETUP ---
@@ -18,6 +19,7 @@ VALID_BOOKS = [
 ]
 HISTORY_FILE = "live_predictions.csv"
 
+# Normalization Map
 TEAM_MAP = {
     "USF": "South Florida", "Ole Miss": "Mississippi", "LSU": "Louisiana State",
     "UConn": "Connecticut", "UMass": "Massachusetts", 
@@ -25,7 +27,7 @@ TEAM_MAP = {
     "UL Lafayette": "Louisiana"
 }
 
-# --- 2. CACHING ---
+# --- 2. UTILS ---
 def fetch_with_cache(filename, endpoint, params, max_age_hours=1):
     if os.path.exists(filename):
         if (time.time() - os.path.getmtime(filename)) < (max_age_hours * 3600):
@@ -66,9 +68,37 @@ def build_decay_lookup(year):
         lookup[team] = team_mom
     return lookup
 
-# --- 3. MAIN EXECUTION ---
+# --- 3. QUANT MATH ---
+def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
+    """
+    Calculates Analytics Win Probability using Logistic Regression on Power Ratings.
+    """
+    # 1. Talent Adjustment (Talent gap / 20 = approx point value)
+    talent_diff = (home_talent - away_talent) / 20.0
+    
+    # 2. SRS Adjustment (Standard Power Rating)
+    srs_diff = home_srs - away_srs
+    
+    # 3. Home Field Advantage (Standard 2.5 points)
+    # We assume 'neutral' unless specified, but for post-season HFA is usually small/zero.
+    # We'll use 1.0 for a slight "crowd" edge but keep it conservative.
+    hfa = 1.0 
+    
+    # Total "Analytics Point Edge"
+    total_edge = srs_diff + talent_diff + hfa
+    
+    # Logistic Function (Sigmoid)
+    # The divisor 7.5 scales the margin to a percentage (standard in elo/rating systems)
+    try:
+        prob = 1 / (1 + math.exp(-1 * total_edge / 7.5))
+    except:
+        prob = 0.5
+        
+    return prob
+
+# --- 4. MAIN EXECUTION ---
 def main():
-    print("--- 🏈 CFB QUANT ENGINE: FINAL FIX ---")
+    print("--- 🏈 CFB QUANT ENGINE: LOGISTIC FIX ---")
     YEAR = 2025
     
     try:
@@ -102,39 +132,32 @@ def main():
         
         gid = str(g.get('id'))
         
-        # --- FIX: ROBUST NAME FINDER ---
-        # Checks both "home_team" (snake_case) and "homeTeam" (camelCase)
+        # Robust Name Check
         home = g.get('home_team') or g.get('homeTeam')
         away = g.get('away_team') or g.get('awayTeam')
-        
-        if not home or not away:
-            # Skip placeholders like "TBD" if names are truly missing
-            continue
+        if not home or not away: continue
 
         h_d = decay_map.get(home, {})
         a_d = decay_map.get(away, {})
         
         # Base Features
+        h_srs = srs_map.get(home, 0)
+        a_srs = srs_map.get(away, 0)
+        h_tal = talent_map.get(home, 10)
+        a_tal = talent_map.get(away, 10)
+
         base_row = {
-            'home_talent_score': talent_map.get(home, 10), 'away_talent_score': talent_map.get(away, 10),
-            'home_srs_rating': srs_map.get(home, -5), 'away_srs_rating': srs_map.get(away, -5),
+            'home_talent_score': h_tal, 'away_talent_score': a_tal,
+            'home_srs_rating': h_srs, 'away_srs_rating': a_srs,
             **{f"home_{k}":v for k,v in h_d.items()}, **{f"away_{k}":v for k,v in a_d.items()}
         }
 
-        # 1. STRAIGHT UP
-        ml_row = base_row.copy()
-        ml_row['spread'] = 0.0
-        ml_row['overUnder'] = 55.5
-        for col in feat_cols:
-            if col not in ml_row: ml_row[col] = 0.0
-        
-        try:
-            ml_probs = model_spread.predict_proba(pd.DataFrame([ml_row])[feat_cols])[0]
-            ml_pick = home if ml_probs[1] > 0.5 else away
-            ml_conf = max(ml_probs[1], 1 - ml_probs[1])
-        except: continue
+        # --- 1. ANALYTICS WIN PROBABILITY (LOGISTIC FIX) ---
+        ml_win_prob = calculate_win_prob(h_srs, a_srs, h_tal, a_tal)
+        ml_pick = home if ml_win_prob > 0.5 else away
+        ml_conf = max(ml_win_prob, 1 - ml_win_prob)
 
-        # 2. SPREAD/TOTAL
+        # --- 2. SPREAD/TOTAL (ML MODEL) ---
         lines = shopping_cart.get(int(gid), [])
         best_spread = {"conf": -1, "pick": "N/A", "book": "N/A"}
         best_total = {"conf": -1, "pick": "N/A", "book": "N/A"}
@@ -190,7 +213,6 @@ def main():
         
         combined_df['HomeTeam'] = combined_df['HomeTeam'].replace(TEAM_MAP)
         combined_df['AwayTeam'] = combined_df['AwayTeam'].replace(TEAM_MAP)
-        # Drop duplicates by Team Matchup to ensure clean data
         combined_df = combined_df.drop_duplicates(subset=['HomeTeam', 'AwayTeam'], keep='first')
         
         combined_df.to_csv(HISTORY_FILE, index=False)
