@@ -41,7 +41,7 @@ def calculate_win_prob(home_srs, away_srs, home_talent, away_talent):
     return prob
 
 def main():
-    print("--- 🕰️ RUNNING ROBUST BACKFILL ---")
+    print("--- 🕰️ RUNNING PARANOID BACKFILL ---")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -68,7 +68,6 @@ def main():
                 else: t_mom[f"decay_{m}"] = 0.0
             decay_map[team] = t_mom
 
-    # PERIODS TO BACKFILL
     periods = [
         {"type": "regular", "week": 14},
         {"type": "regular", "week": 15},
@@ -90,22 +89,31 @@ def main():
         print(f"   -> Scanning {p['type']} week {p['week']} ({len(games)} games)...")
 
         for g in games:
+            # SKIP PENDING GAMES
             if not g.get('completed'): continue
 
             gid = str(g['id'])
             home = g.get('home_team')
             away = g.get('away_team')
             
-            # --- FIX: SAFE DATE HANDLING ---
+            # --- PARANOID CHECK 1: NAMES ---
+            if not home or not away:
+                continue # Skip "ghost" games without names
+            
+            # --- PARANOID CHECK 2: SCORES ---
+            h_score = g.get('home_points')
+            a_score = g.get('away_points')
+            
+            if h_score is None or a_score is None:
+                continue # Skip games without valid scores
+                
             start_date = g.get('start_date')
             date_short = start_date[:10] if start_date else "N/A"
-            
-            h_score = g.get('home_points', 0)
-            a_score = g.get('away_points', 0)
 
+            # --- BUILD PREDICTION ---
             h_d = decay_map.get(home, {})
             a_d = decay_map.get(away, {})
-            # Defaults to prevent crashing on minor teams
+            # Defaults
             if not h_d: h_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()}
             if not a_d: a_d = {k: 0.0 for k in decay_map.get('Alabama', {}).keys()}
 
@@ -126,7 +134,6 @@ def main():
             best_spread = {"conf": -1, "pick": "N/A", "book": "N/A"}
             best_total = {"conf": -1, "pick": "N/A", "book": "N/A"}
             
-            # Case 1: No Lines Found (Save Score & ML)
             if not game_lines:
                 new_rows.append({
                     "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
@@ -138,7 +145,6 @@ def main():
                 })
                 continue
 
-            # Case 2: Lines Found (Predict Spread/Total)
             for line in game_lines:
                 if line.get('spread'):
                     row = base_row.copy()
@@ -186,6 +192,7 @@ def main():
 
     if new_rows:
         backfill_df = pd.DataFrame(new_rows)
+        # Force Clean GameID
         backfill_df['GameID'] = backfill_df['GameID'].astype(str)
         backfill_df['HomeTeam'] = backfill_df['HomeTeam'].replace(TEAM_MAP)
         backfill_df['AwayTeam'] = backfill_df['AwayTeam'].replace(TEAM_MAP)
@@ -199,7 +206,7 @@ def main():
             combined = backfill_df
 
         combined.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Injected {len(new_rows)} scored games into database.")
+        print(f"✅ SUCCESS: Injected {len(new_rows)} CLEAN historical games.")
     else:
         print("⚠️ No historical games found.")
 
