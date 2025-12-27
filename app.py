@@ -15,14 +15,17 @@ def load_data():
     if not os.path.exists("live_predictions.csv"):
         return pd.DataFrame()
     
-    df = pd.read_csv("live_predictions.csv")
+    try:
+        df = pd.read_csv("live_predictions.csv")
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
     
     # Cleanup GameID
     if 'GameID' in df.columns:
         df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         
     # --- CRITICAL FIX: Ensure 'Manual_HomeScore' exists ---
-    # The real engine doesn't output this column, so we add it if missing.
+    # The real engine doesn't output this column, so we add it if missing to prevent the KeyError.
     if 'Manual_HomeScore' not in df.columns:
         df['Manual_HomeScore'] = pd.NA
         df['Manual_AwayScore'] = pd.NA
@@ -31,14 +34,14 @@ def load_data():
 
 df = load_data()
 
-# --- 2. DIAGNOSTICS (Toggle closed by default now) ---
+# --- 2. DIAGNOSTICS (Closed by default) ---
 with st.expander("🛠️ Data Diagnostics", expanded=False):
     st.write(f"Rows: {len(df)}")
     if not df.empty: st.dataframe(df.head())
 
 # --- 3. MAIN DISPLAY ---
 if df.empty:
-    st.warning("⚠️ Waiting for data...")
+    st.warning("⚠️ Waiting for data... (CSV is empty)")
     st.stop()
 
 # Force Sort by Date
