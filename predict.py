@@ -3,6 +3,7 @@ import pandas as pd
 import joblib
 import requests
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,23 +24,76 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- 🔮 FORECAST ENGINE V1 (TALENT + SRS) ---")
+    print("--- 🏈 CFB QUANT ENGINE: DAILY UPDATE ---")
+    
+    # 1. LOAD & GRADE EXISTING HISTORY
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        # Clean GameIDs
+        if 'GameID' in df.columns:
+            df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
+            
+        # Ensure Score Columns Exist
+        if 'Manual_HomeScore' not in df.columns:
+            df['Manual_HomeScore'] = pd.NA
+            df['Manual_AwayScore'] = pd.NA
+
+        # Identify Pending Games
+        pending_mask = df['Manual_HomeScore'].isna() & df['GameID'].notna()
+        
+        if pending_mask.any():
+            print(f"   -> Checking scores for {pending_mask.sum()} pending games...")
+            
+            # Fetch Completed Scores for 2025
+            score_map = {}
+            for stype in ["regular", "postseason"]:
+                games = fetch_with_retry("/games", {"year": YEAR, "seasonType": stype})
+                if isinstance(games, list):
+                    for g in games:
+                        if g.get('completed'):
+                            # ROBUST KEY CHECK (The Fix)
+                            h_pts = g.get('home_points') if g.get('home_points') is not None else g.get('homePoints')
+                            a_pts = g.get('away_points') if g.get('away_points') is not None else g.get('awayPoints')
+                            
+                            score_map[str(g['id'])] = {'h': h_pts, 'a': a_pts}
+            
+            # Apply Scores
+            graded_count = 0
+            for idx, row in df[pending_mask].iterrows():
+                gid = str(row['GameID'])
+                if gid in score_map:
+                    s = score_map[gid]
+                    if s['h'] is not None and s['a'] is not None:
+                        df.at[idx, 'Manual_HomeScore'] = s['h']
+                        df.at[idx, 'Manual_AwayScore'] = s['a']
+                        graded_count += 1
+                        print(f"      ✅ Graded: {row['Game']} ({int(s['a'])}-{int(s['h'])})")
+            
+            if graded_count > 0:
+                print(f"   -> Updated {graded_count} games in history.")
+    else:
+        df = pd.DataFrame()
+
+    # 2. GENERATE NEW PREDICTIONS
+    print("   -> Scanning for new matchups...")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
         model_win = joblib.load("model_winner.pkl")
         feat_cols = model_spread.feature_names_in_
-    except: print("❌ Models missing."); return
+    except: 
+        print("❌ Error: Models not found. Run retrain.py first.")
+        if not df.empty: df.to_csv(HISTORY_FILE, index=False)
+        return
 
-    print("   -> Fetching schedule...")
+    # Fetch Schedule
     games = []
     lines = []
     scenarios = [
         {"seasonType": "postseason", "week": 1},
         {"seasonType": "regular", "week": 16},
-        {"seasonType": "regular", "week": 17},
-        {"seasonType": "regular", "week": 15}
+        {"seasonType": "regular", "week": 17}
     ]
     for s in scenarios:
         g = fetch_with_retry("/games", {"year": YEAR, **s})
@@ -47,8 +101,8 @@ def main():
         if isinstance(g, list): games.extend(g)
         if isinstance(l, list): lines.extend(l)
 
-    unique_games = {g['id']: g for g in games}
-    games = list(unique_games.values())
+    # Filter for Games NOT already in history
+    existing_ids = df['GameID'].astype(str).tolist() if not df.empty and 'GameID' in df.columns else []
     
     lines_map = {}
     for g in lines:
@@ -60,14 +114,15 @@ def main():
     srs_map = {x['team']: x['rating'] for x in srs} if isinstance(srs, list) else {}
     tal_map = {x.get('school', x.get('team')): x['talent'] for x in talent} if isinstance(talent, list) else {}
 
-    predictions = []
+    new_predictions = []
     
     if games:
-        print(f"   -> Processing {len(games)} potential games...")
         for g in games:
             if not isinstance(g, dict) or g.get('completed'): continue
             gid = str(g.get('id'))
             
+            if gid in existing_ids: continue
+
             home = g.get('home_team') or g.get('homeTeam')
             away = g.get('away_team') or g.get('awayTeam')
             if not home or not away: continue
@@ -87,7 +142,7 @@ def main():
                 a_ml = line.get('awayMoneyline')
                 if spread_val is None or total_val is None: continue
 
-                # V1 FEATURE ROW (Only Talent + SRS)
+                # V1 FEATURES (Talent + SRS)
                 row = {
                     'spread': spread_val,
                     'overUnder': total_val,
@@ -131,7 +186,7 @@ def main():
                             active_odds = h_ml if best_ml['pick'] == home else a_ml
                             break
 
-                predictions.append({
+                new_predictions.append({
                     "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
                     "StartDate": g.get('start_date') or g.get('startDate'),
                     "Moneyline Pick": best_ml['pick'], "Moneyline Conf": f"{best_ml['conf']:.1%}", 
@@ -142,17 +197,16 @@ def main():
                     "Pick_ML_Odds": active_odds
                 })
 
-    if predictions:
-        try:
-            old_df = pd.read_csv(HISTORY_FILE)
-            history = old_df[old_df['Manual_HomeScore'].notna()]
-        except: history = pd.DataFrame()
-        
-        final_df = pd.concat([pd.DataFrame(predictions), history], ignore_index=True)
-        final_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Forecast updated using V1 (Talent+SRS) Model.")
+    # 3. SAVE
+    if new_predictions:
+        print(f"   -> Added {len(new_predictions)} new forecasts.")
+        final_df = pd.concat([pd.DataFrame(new_predictions), df], ignore_index=True)
     else:
-        print("⚠️ No games found.")
+        print("   -> No new games found.")
+        final_df = df
+    
+    final_df.to_csv(HISTORY_FILE, index=False)
+    print("✅ SUCCESS: Database updated.")
 
 if __name__ == "__main__":
     main()
