@@ -19,7 +19,9 @@ def fetch_with_retry(endpoint, params):
         try:
             res = requests.get(url, headers=HEADERS, params=params)
             if res.status_code == 200: return res.json()
-            elif res.status_code == 429: time.sleep(15 * attempt)
+            elif res.status_code == 429: 
+                print(f"      ⚠️ Rate limit hit. Sleeping {10 * attempt}s...")
+                time.sleep(10 * attempt)
         except: time.sleep(5)
     return []
 
@@ -29,81 +31,75 @@ def main():
     # 1. LOAD & GRADE EXISTING HISTORY
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
-        # Clean GameIDs
         if 'GameID' in df.columns:
             df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
             
-        # Ensure Score Columns Exist
         if 'Manual_HomeScore' not in df.columns:
             df['Manual_HomeScore'] = pd.NA
             df['Manual_AwayScore'] = pd.NA
 
-        # Identify Pending Games
         pending_mask = df['Manual_HomeScore'].isna() & df['GameID'].notna()
         
         if pending_mask.any():
             print(f"   -> Checking scores for {pending_mask.sum()} pending games...")
             
-            # Fetch Completed Scores for 2025
             score_map = {}
             for stype in ["regular", "postseason"]:
+                print(f"      -> Fetching {stype} scores from API...")
                 games = fetch_with_retry("/games", {"year": YEAR, "seasonType": stype})
+                
                 if isinstance(games, list):
+                    count = 0
                     for g in games:
+                        # KEY FIX: Robust check for points keys
                         if g.get('completed'):
-                            # ROBUST KEY CHECK (The Fix)
                             h_pts = g.get('home_points') if g.get('home_points') is not None else g.get('homePoints')
                             a_pts = g.get('away_points') if g.get('away_points') is not None else g.get('awayPoints')
                             
-                            score_map[str(g['id'])] = {'h': h_pts, 'a': a_pts}
+                            # Only add if we actually found numbers
+                            if h_pts is not None and a_pts is not None:
+                                score_map[str(g['id'])] = {'h': h_pts, 'a': a_pts}
+                                count += 1
+                    print(f"         Found {count} completed games.")
             
-            # Apply Scores
             graded_count = 0
             for idx, row in df[pending_mask].iterrows():
                 gid = str(row['GameID'])
                 if gid in score_map:
                     s = score_map[gid]
-                    if s['h'] is not None and s['a'] is not None:
-                        df.at[idx, 'Manual_HomeScore'] = s['h']
-                        df.at[idx, 'Manual_AwayScore'] = s['a']
-                        graded_count += 1
-                        print(f"      ✅ Graded: {row['Game']} ({int(s['a'])}-{int(s['h'])})")
+                    df.at[idx, 'Manual_HomeScore'] = s['h']
+                    df.at[idx, 'Manual_AwayScore'] = s['a']
+                    graded_count += 1
+                    print(f"      ✅ Graded: {row['Game']} ({int(s['a'])}-{int(s['h'])})")
             
             if graded_count > 0:
                 print(f"   -> Updated {graded_count} games in history.")
+            else:
+                print("   ⚠️ No matching scores found for pending games.")
     else:
         df = pd.DataFrame()
 
-    # 2. GENERATE NEW PREDICTIONS
+    # 2. PREDICTION LOGIC (Unchanged)
     print("   -> Scanning for new matchups...")
-    
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
         model_win = joblib.load("model_winner.pkl")
         feat_cols = model_spread.feature_names_in_
     except: 
-        print("❌ Error: Models not found. Run retrain.py first.")
         if not df.empty: df.to_csv(HISTORY_FILE, index=False)
-        return
+        print("❌ Models missing."); return
 
-    # Fetch Schedule
-    games = []
-    lines = []
-    scenarios = [
-        {"seasonType": "postseason", "week": 1},
-        {"seasonType": "regular", "week": 16},
-        {"seasonType": "regular", "week": 17}
-    ]
+    games = []; lines = []
+    scenarios = [{"seasonType": "postseason", "week": 1}, {"seasonType": "regular", "week": 16}, {"seasonType": "regular", "week": 17}]
+    
     for s in scenarios:
         g = fetch_with_retry("/games", {"year": YEAR, **s})
         l = fetch_with_retry("/lines", {"year": YEAR, **s})
         if isinstance(g, list): games.extend(g)
         if isinstance(l, list): lines.extend(l)
 
-    # Filter for Games NOT already in history
     existing_ids = df['GameID'].astype(str).tolist() if not df.empty and 'GameID' in df.columns else []
-    
     lines_map = {}
     for g in lines:
         valid = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
@@ -115,14 +111,12 @@ def main():
     tal_map = {x.get('school', x.get('team')): x['talent'] for x in talent} if isinstance(talent, list) else {}
 
     new_predictions = []
-    
     if games:
         for g in games:
             if not isinstance(g, dict) or g.get('completed'): continue
             gid = str(g.get('id'))
-            
             if gid in existing_ids: continue
-
+            
             home = g.get('home_team') or g.get('homeTeam')
             away = g.get('away_team') or g.get('awayTeam')
             if not home or not away: continue
@@ -142,7 +136,6 @@ def main():
                 a_ml = line.get('awayMoneyline')
                 if spread_val is None or total_val is None: continue
 
-                # V1 FEATURES (Talent + SRS)
                 row = {
                     'spread': spread_val,
                     'overUnder': total_val,
@@ -153,7 +146,7 @@ def main():
                 }
                 input_df = pd.DataFrame([row])[feat_cols]
 
-                # SPREAD
+                # PREDICTIONS
                 prob = model_spread.predict_proba(input_df)[0][1]
                 conf = max(prob, 1-prob)
                 if conf > best_spread['conf']:
@@ -161,14 +154,12 @@ def main():
                     p_line = spread_val if prob > 0.5 else -spread_val
                     best_spread = {"conf": conf, "pick": f"{p_team} ({p_line})", "pick_team": p_team, "pick_line": p_line}
 
-                # TOTAL
                 prob = model_total.predict_proba(input_df)[0][1]
                 conf = max(prob, 1-prob)
                 if conf > best_total['conf']:
                     side = "OVER" if prob > 0.5 else "UNDER"
                     best_total = {"conf": conf, "pick": f"{side} {total_val}", "pick_side": side, "pick_val": total_val}
                     
-                # MONEYLINE
                 prob = model_win.predict_proba(input_df)[0][1]
                 conf = max(prob, 1-prob)
                 if conf > best_ml['conf']:
@@ -197,12 +188,10 @@ def main():
                     "Pick_ML_Odds": active_odds
                 })
 
-    # 3. SAVE
     if new_predictions:
         print(f"   -> Added {len(new_predictions)} new forecasts.")
         final_df = pd.concat([pd.DataFrame(new_predictions), df], ignore_index=True)
     else:
-        print("   -> No new games found.")
         final_df = df
     
     final_df.to_csv(HISTORY_FILE, index=False)
