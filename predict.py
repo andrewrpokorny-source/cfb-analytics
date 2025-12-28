@@ -23,14 +23,14 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- 🔮 FORECAST ENGINE (WITH REAL ODDS) ---")
+    print("--- 🔮 FORECAST ENGINE V1 (TALENT + SRS) ---")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
         model_total = joblib.load("model_total.pkl")
         model_win = joblib.load("model_winner.pkl")
         feat_cols = model_spread.feature_names_in_
-    except: print("❌ Models missing. Run retrain.py first."); return
+    except: print("❌ Models missing."); return
 
     print("   -> Fetching schedule...")
     games = []
@@ -78,8 +78,6 @@ def main():
             best_spread = {"conf": 0.0, "pick": "Pending"}
             best_total = {"conf": 0.0, "pick": "Pending"}
             best_ml = {"conf": 0.0, "pick": "Pending"}
-            
-            # Store odds for the best pick
             active_odds = None
 
             for line in game_lines:
@@ -87,9 +85,9 @@ def main():
                 total_val = line.get('overUnder')
                 h_ml = line.get('homeMoneyline')
                 a_ml = line.get('awayMoneyline')
-                
                 if spread_val is None or total_val is None: continue
 
+                # V1 FEATURE ROW (Only Talent + SRS)
                 row = {
                     'spread': spread_val,
                     'overUnder': total_val,
@@ -123,13 +121,11 @@ def main():
                     best_ml = {"conf": conf, "pick": ml_team}
                     active_odds = h_ml if ml_team == home else a_ml
 
-            # LOGIC ENFORCEMENT
+            # Logic Enforcement
             if best_spread['conf'] > 0:
                 if best_spread.get('pick_line', 0) < 0:
                     if best_ml['pick'] != best_spread['pick_team']:
-                        # Fix conflict
                         best_ml['pick'] = best_spread['pick_team']
-                        # Grab odds for the forced pick
                         for line in game_lines:
                             h_ml, a_ml = line.get('homeMoneyline'), line.get('awayMoneyline')
                             active_odds = h_ml if best_ml['pick'] == home else a_ml
@@ -143,7 +139,7 @@ def main():
                     "Total Pick": best_total['pick'], "Total Conf": f"{best_total['conf']:.1%}",
                     "Pick_Team": best_spread.get('pick_team'), "Pick_Line": best_spread.get('pick_line'),
                     "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val'),
-                    "Pick_ML_Odds": active_odds # Save Real Odds
+                    "Pick_ML_Odds": active_odds
                 })
 
     if predictions:
@@ -154,9 +150,9 @@ def main():
         
         final_df = pd.concat([pd.DataFrame(predictions), history], ignore_index=True)
         final_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Forecast updated with real Moneyline odds.")
+        print(f"✅ SUCCESS: Forecast updated using V1 (Talent+SRS) Model.")
     else:
-        print("⚠️ No games found with valid odds.")
+        print("⚠️ No games found.")
 
 if __name__ == "__main__":
     main()

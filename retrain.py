@@ -6,10 +6,11 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from dotenv import load_dotenv
 
-# --- CONFIG ---
 load_dotenv()
 API_KEY = os.getenv("CFBD_API_KEY")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
+
+# V1 FEATURES (The Winning Formula)
 FEATURES = [
     'spread', 'overUnder',
     'home_talent_score', 'away_talent_score',
@@ -27,19 +28,16 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- 🧠 TRAINING ALL 3 BRAINS (SPREAD, TOTAL, WINNER) ---")
+    print("--- 🧠 RESTORING V1 BRAIN (TALENT + SRS) ---")
     
     all_games = []
     
-    # 1. Fetch 2024 and 2025 Data
     for year in [2024, 2025]:
-        print(f"   -> Fetching {year} data...")
         games = fetch_with_retry("/games", {"year": year, "seasonType": "both"})
         lines = fetch_with_retry("/lines", {"year": year, "seasonType": "both"})
         srs = fetch_with_retry("/ratings/srs", {"year": year})
         talent = fetch_with_retry("/talent", {"year": year})
         
-        # Maps
         line_map = {}
         if isinstance(lines, list):
             for g in lines:
@@ -53,7 +51,6 @@ def main():
                 if not g.get('completed'): continue 
                 gid = str(g['id'])
                 
-                # Universal Key Handling
                 home = g.get('home_team') or g.get('homeTeam')
                 away = g.get('away_team') or g.get('awayTeam')
                 h_pts = g.get('home_points') or g.get('homePoints')
@@ -82,31 +79,29 @@ def main():
     df = pd.DataFrame(all_games)
     X = df[FEATURES]
     
-    # --- TRAIN 3 MODELS ---
-    print("   -> Training Spread Model...")
+    # Train Spread
     y_cover = ((df['home_points'] + df['spread']) > df['away_points']).astype(int)
     model_spread = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
     model_spread.fit(X, y_cover)
     
-    print("   -> Training Winner (Moneyline) Model...")
+    # Train Winner
     y_win = (df['home_points'] > df['away_points']).astype(int)
     model_win = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
     model_win.fit(X, y_win)
     
-    print("   -> Training Total Model...")
+    # Train Total
     y_total = ((df['home_points'] + df['away_points']) > df['overUnder']).astype(int)
     model_total = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
     model_total.fit(X, y_total)
     
-    # Save Feature Names
     for m in [model_spread, model_win, model_total]:
         m.feature_names_in_ = FEATURES
     
     joblib.dump(model_spread, "model_spread_tuned.pkl")
-    joblib.dump(model_win, "model_winner.pkl") # NEW FILE
+    joblib.dump(model_win, "model_winner.pkl")
     joblib.dump(model_total, "model_total.pkl")
     
-    print("✅ SUCCESS: All 3 models saved.")
+    print("✅ SUCCESS: V1 Models Restored.")
 
 if __name__ == "__main__":
     main()
