@@ -152,47 +152,35 @@ with t2:
 
 with t3:
     if not graded_df.empty:
-        st.markdown("### 📈 Bankroll Simulator (Precise Odds)")
+        st.markdown("### 📈 Bankroll Simulator (Spread & Total Only)")
         wager = st.number_input("Enter Bet Amount ($)", min_value=10, value=100, step=10)
-        st.caption(f"Simulation: ${wager} per game. Uses EXACT historical odds for Moneyline.")
+        st.caption(f"Simulation: ${wager} per game. Assumes standard -110 odds for Spread and Total.")
         
         sim_df = graded_df.sort_values(by='StartDate', ascending=True).copy()
         
-        # EXACT PAYOUT CALCULATOR
+        # PROFIT CALCULATOR (Spread & Total Only)
         def calc_pnl(row, pick_type):
             res_col = f"Res ({pick_type})"
             res = row.get(res_col)
             
             if res == 'LOSS': return -float(wager)
             if res == 'PUSH': return 0.0
-            
-            # WINS
-            if pick_type == 'SU':
-                # Use real odds if available, else +100 fallback
-                odds = row.get('Pick_ML_Odds')
-                if pd.isna(odds) or odds == 0: odds = 100
-                
-                if odds > 0: return wager * (odds / 100)
-                else: return wager * (100 / abs(odds))
-                
-            else:
-                # Spread/Total assumed -110 standard
-                return wager * (100/110)
+            if res == 'WIN': return wager * (100/110) # Standard -110 odds
+            return 0.0
 
-        sim_df['Profit_SU'] = sim_df.apply(lambda r: calc_pnl(r, 'SU'), axis=1)
         sim_df['Profit_Spread'] = sim_df.apply(lambda r: calc_pnl(r, 'Spr'), axis=1)
         sim_df['Profit_Total'] = sim_df.apply(lambda r: calc_pnl(r, 'Tot'), axis=1)
 
-        sim_df['Bankroll_SU'] = sim_df['Profit_SU'].cumsum()
         sim_df['Bankroll_Spread'] = sim_df['Profit_Spread'].cumsum()
         sim_df['Bankroll_Total'] = sim_df['Profit_Total'].cumsum()
         
-        st.line_chart(sim_df[['Date', 'Bankroll_SU', 'Bankroll_Spread', 'Bankroll_Total']].set_index('Date'))
+        # Plot (Only Spread and Total)
+        st.line_chart(sim_df[['Date', 'Bankroll_Spread', 'Bankroll_Total']].set_index('Date'))
         
-        b1, b2, b3 = st.columns(3)
-        b1.metric("SU Net Profit", f"${sim_df['Profit_SU'].sum():,.2f}")
-        b2.metric("Spread Net Profit", f"${sim_df['Profit_Spread'].sum():,.2f}")
-        b3.metric("Total Net Profit", f"${sim_df['Profit_Total'].sum():,.2f}")
+        # Metrics (2 Columns instead of 3)
+        b1, b2 = st.columns(2)
+        b1.metric("Spread Net Profit", f"${sim_df['Profit_Spread'].sum():,.2f}")
+        b2.metric("Total Net Profit", f"${sim_df['Profit_Total'].sum():,.2f}")
         
     else:
         st.info("No history available.")
