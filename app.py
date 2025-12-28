@@ -1,12 +1,45 @@
 import streamlit as st
 import pandas as pd
 import os
+import hmac
 from dotenv import load_dotenv
 
 # --- CONFIG ---
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
-st.title("🏈 CFB Quant Engine: Triple Threat Dashboard")
 
+# --- AUTHENTICATION ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if hmac.compare_digest(st.session_state["password"], st.secrets["password"]):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show Login Form
+    st.title("🔒 Restricted Access")
+    st.text_input("Enter Password", type="password", on_change=password_entered, key="password")
+    
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("😕 Password incorrect")
+        
+    return False
+
+# --- STOP HERE IF NOT AUTHENTICATED ---
+if not check_password():
+    st.stop()
+
+# ==========================================
+#      🚀 YOUR ORIGINAL APP CODE BELOW
+# ==========================================
+
+st.title("🏈 CFB Quant Engine: Triple Threat Dashboard")
 load_dotenv()
 
 # --- 1. LOAD DATA ---
