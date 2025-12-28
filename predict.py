@@ -23,7 +23,7 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- 🔮 FORECAST ENGINE (LOGIC ENFORCED) ---")
+    print("--- 🔮 FORECAST ENGINE (WITH REAL ODDS) ---")
     
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -32,7 +32,6 @@ def main():
         feat_cols = model_spread.feature_names_in_
     except: print("❌ Models missing. Run retrain.py first."); return
 
-    # 1. FETCH
     print("   -> Fetching schedule...")
     games = []
     lines = []
@@ -56,13 +55,11 @@ def main():
         valid = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
         lines_map[str(g['id'])] = valid
 
-    # 2. STATS
     srs = fetch_with_retry("/ratings/srs", {"year": YEAR})
     talent = fetch_with_retry("/talent", {"year": YEAR})
     srs_map = {x['team']: x['rating'] for x in srs} if isinstance(srs, list) else {}
     tal_map = {x.get('school', x.get('team')): x['talent'] for x in talent} if isinstance(talent, list) else {}
 
-    # 3. PREDICT
     predictions = []
     
     if games:
@@ -81,10 +78,16 @@ def main():
             best_spread = {"conf": 0.0, "pick": "Pending"}
             best_total = {"conf": 0.0, "pick": "Pending"}
             best_ml = {"conf": 0.0, "pick": "Pending"}
+            
+            # Store odds for the best pick
+            active_odds = None
 
             for line in game_lines:
                 spread_val = line.get('spread')
                 total_val = line.get('overUnder')
+                h_ml = line.get('homeMoneyline')
+                a_ml = line.get('awayMoneyline')
+                
                 if spread_val is None or total_val is None: continue
 
                 row = {
@@ -118,14 +121,19 @@ def main():
                 if conf > best_ml['conf']:
                     ml_team = home if prob > 0.5 else away
                     best_ml = {"conf": conf, "pick": ml_team}
+                    active_odds = h_ml if ml_team == home else a_ml
 
-            # --- LOGIC ENFORCEMENT ---
+            # LOGIC ENFORCEMENT
             if best_spread['conf'] > 0:
-                # Rule: If Spread Pick is Favorite (Negative Line), ML must match
                 if best_spread.get('pick_line', 0) < 0:
                     if best_ml['pick'] != best_spread['pick_team']:
-                        # Override ML with Spread pick
+                        # Fix conflict
                         best_ml['pick'] = best_spread['pick_team']
+                        # Grab odds for the forced pick
+                        for line in game_lines:
+                            h_ml, a_ml = line.get('homeMoneyline'), line.get('awayMoneyline')
+                            active_odds = h_ml if best_ml['pick'] == home else a_ml
+                            break
 
                 predictions.append({
                     "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
@@ -134,7 +142,8 @@ def main():
                     "Spread Pick": best_spread['pick'], "Spread Conf": f"{best_spread['conf']:.1%}", 
                     "Total Pick": best_total['pick'], "Total Conf": f"{best_total['conf']:.1%}",
                     "Pick_Team": best_spread.get('pick_team'), "Pick_Line": best_spread.get('pick_line'),
-                    "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val')
+                    "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val'),
+                    "Pick_ML_Odds": active_odds # Save Real Odds
                 })
 
     if predictions:
@@ -145,7 +154,7 @@ def main():
         
         final_df = pd.concat([pd.DataFrame(predictions), history], ignore_index=True)
         final_df.to_csv(HISTORY_FILE, index=False)
-        print(f"✅ SUCCESS: Updated predictions with logic enforcement.")
+        print(f"✅ SUCCESS: Forecast updated with real Moneyline odds.")
     else:
         print("⚠️ No games found with valid odds.")
 

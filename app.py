@@ -20,11 +20,9 @@ def load_data():
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
     
-    # Cleanup GameID
     if 'GameID' in df.columns:
         df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
         
-    # Safety Check
     if 'Manual_HomeScore' not in df.columns:
         df['Manual_HomeScore'] = pd.NA
         df['Manual_AwayScore'] = pd.NA
@@ -33,7 +31,7 @@ def load_data():
 
 df = load_data()
 
-# --- 2. DIAGNOSTICS (Closed by default) ---
+# --- 2. DIAGNOSTICS ---
 with st.expander("🛠️ Data Diagnostics", expanded=False):
     st.write(f"Rows: {len(df)}")
     if not df.empty: st.dataframe(df.head())
@@ -43,54 +41,46 @@ if df.empty:
     st.warning("⚠️ Waiting for data... (CSV is empty)")
     st.stop()
 
-# Force Sort by Date
 if 'StartDate' in df.columns:
     df = df.sort_values(by='StartDate', ascending=True)
 
-# --- 4. PRE-CALCULATE GRADES (The Missing Step) ---
-# We iterate through the dataframe and create the 'Res (SU)', 'Res (Spr)', etc. columns
+# --- 4. PRE-CALCULATE GRADES ---
 graded_rows = []
 
 for _, row in df.iterrows():
-    # Only grade if we have a manual score
     if pd.notna(row['Manual_HomeScore']):
         h_score = float(row['Manual_HomeScore'])
         a_score = float(row['Manual_AwayScore'])
         winner = row['HomeTeam'] if h_score > a_score else row['AwayTeam']
         
-        # SU Result
+        # SU
         su_pick = row.get('Moneyline Pick')
         su_res = "WIN" if su_pick == winner else "LOSS"
         
-        # Spread Result
+        # Spread
         spread_res = "PUSH"
         if pd.notna(row.get('Pick_Line')):
             pick_team = row.get('Pick_Team')
             line = float(row.get('Pick_Line', 0))
             if pick_team == row['HomeTeam']: margin = (h_score - a_score) + line
             else: margin = (a_score - h_score) + line
-            
             if margin > 0: spread_res = "WIN"
             elif margin < 0: spread_res = "LOSS"
             
-        # Total Result
+        # Total
         total_res = "PUSH"
         if pd.notna(row.get('Pick_Total')):
             actual_total = h_score + a_score
             target = float(row.get('Pick_Total', 0))
             side = row.get('Pick_Side')
-            
             if side == 'OVER': total_res = "WIN" if actual_total > target else "LOSS"
             elif side == 'UNDER': total_res = "WIN" if actual_total < target else "LOSS"
             if actual_total == target: total_res = "PUSH"
 
-        # Add grading columns to the row
         new_row = row.copy()
         new_row['Res (SU)'] = su_res
         new_row['Res (Spr)'] = spread_res
         new_row['Res (Tot)'] = total_res
-        
-        # Display Columns
         new_row['Pick (SU)'] = su_pick
         new_row['Pick (Spr)'] = row.get('Spread Pick')
         new_row['Pick (Tot)'] = row.get('Total Pick')
@@ -99,19 +89,14 @@ for _, row in df.iterrows():
         
         graded_rows.append(new_row)
 
-# Create the Graded DataFrame
 if graded_rows:
     graded_df = pd.DataFrame(graded_rows)
-    # Sort history newest to oldest
-    graded_df = graded_df.sort_values(by='StartDate', ascending=False)
 else:
     graded_df = pd.DataFrame()
 
-# Upcoming (Anything without a score)
 upcoming_df = df[df['Manual_HomeScore'].isna()].copy()
 
-# --- 5. TABS ---
-t1, t2 = st.tabs(["🔮 Forecast Board", "📜 Performance History"])
+t1, t2, t3 = st.tabs(["🔮 Forecast Board", "📜 Performance History", "💰 Bankroll Simulator"])
 
 def color_conf(val):
     try:
@@ -133,18 +118,13 @@ with t1:
         cols = ['StartDate', 'Game', 'Moneyline Pick', 'Moneyline Conf', 
                 'Spread Pick', 'Spread Conf', 'Total Pick', 'Total Conf']
         valid_cols = [c for c in cols if c in upcoming_df.columns]
-        
-        st.dataframe(
-            upcoming_df[valid_cols].style.map(color_conf, subset=[c for c in ['Moneyline Conf', 'Spread Conf', 'Total Conf'] if c in valid_cols]),
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(upcoming_df[valid_cols].style.map(color_conf, subset=[c for c in ['Moneyline Conf', 'Spread Conf', 'Total Conf'] if c in valid_cols]), use_container_width=True, hide_index=True)
     else:
         st.info("No upcoming games found.")
 
 with t2:
     if not graded_df.empty:
-        # --- SCOREBOARD ---
+        display_df = graded_df.sort_values(by='StartDate', ascending=False)
         def get_record(df, res_col):
             if res_col not in df.columns: return "0-0-0", 0.0
             wins = len(df[df[res_col] == 'WIN'])
@@ -154,27 +134,65 @@ with t2:
             pct = (wins / total * 100) if total > 0 else 0.0
             return f"{wins}-{losses}-{pushes}", pct
 
-        rec_su, pct_su = get_record(graded_df, 'Res (SU)')
-        rec_spr, pct_spr = get_record(graded_df, 'Res (Spr)')
-        rec_tot, pct_tot = get_record(graded_df, 'Res (Tot)')
+        rec_su, pct_su = get_record(display_df, 'Res (SU)')
+        rec_spr, pct_spr = get_record(display_df, 'Res (Spr)')
+        rec_tot, pct_tot = get_record(display_df, 'Res (Tot)')
 
-        st.markdown("### 📊 Performance Report (Since Dec 1)")
+        st.markdown("### 📊 Performance Report")
         m1, m2, m3 = st.columns(3)
         m1.metric("🏆 Straight Up", rec_su, f"{pct_su:.1f}%")
         m2.metric("⚖️ Spread", rec_spr, f"{pct_spr:.1f}%")
         m3.metric("↕️ Total", rec_tot, f"{pct_tot:.1f}%")
-
         st.divider()
-
-        # --- HISTORY TABLE ---
         hist_cols = ['Date', 'Game', 'Pick (SU)', 'Res (SU)', 'Pick (Spr)', 'Res (Spr)', 'Pick (Tot)', 'Res (Tot)']
-        # Ensure cols exist
-        valid_hist_cols = [c for c in hist_cols if c in graded_df.columns]
-        
-        st.dataframe(
-            graded_df[valid_hist_cols].style.map(color_result_cell, subset=[c for c in ['Res (SU)', 'Res (Spr)', 'Res (Tot)'] if c in valid_hist_cols]),
-            use_container_width=True,
-            hide_index=True
-        )
+        valid_hist_cols = [c for c in hist_cols if c in display_df.columns]
+        st.dataframe(display_df[valid_hist_cols].style.map(color_result_cell, subset=[c for c in ['Res (SU)', 'Res (Spr)', 'Res (Tot)'] if c in valid_hist_cols]), use_container_width=True, hide_index=True)
     else:
         st.info("No graded games yet.")
+
+with t3:
+    if not graded_df.empty:
+        st.markdown("### 📈 Bankroll Simulator (Precise Odds)")
+        wager = st.number_input("Enter Bet Amount ($)", min_value=10, value=100, step=10)
+        st.caption(f"Simulation: ${wager} per game. Uses EXACT historical odds for Moneyline.")
+        
+        sim_df = graded_df.sort_values(by='StartDate', ascending=True).copy()
+        
+        # EXACT PAYOUT CALCULATOR
+        def calc_pnl(row, pick_type):
+            res_col = f"Res ({pick_type})"
+            res = row.get(res_col)
+            
+            if res == 'LOSS': return -float(wager)
+            if res == 'PUSH': return 0.0
+            
+            # WINS
+            if pick_type == 'SU':
+                # Use real odds if available, else +100 fallback
+                odds = row.get('Pick_ML_Odds')
+                if pd.isna(odds) or odds == 0: odds = 100
+                
+                if odds > 0: return wager * (odds / 100)
+                else: return wager * (100 / abs(odds))
+                
+            else:
+                # Spread/Total assumed -110 standard
+                return wager * (100/110)
+
+        sim_df['Profit_SU'] = sim_df.apply(lambda r: calc_pnl(r, 'SU'), axis=1)
+        sim_df['Profit_Spread'] = sim_df.apply(lambda r: calc_pnl(r, 'Spr'), axis=1)
+        sim_df['Profit_Total'] = sim_df.apply(lambda r: calc_pnl(r, 'Tot'), axis=1)
+
+        sim_df['Bankroll_SU'] = sim_df['Profit_SU'].cumsum()
+        sim_df['Bankroll_Spread'] = sim_df['Profit_Spread'].cumsum()
+        sim_df['Bankroll_Total'] = sim_df['Profit_Total'].cumsum()
+        
+        st.line_chart(sim_df[['Date', 'Bankroll_SU', 'Bankroll_Spread', 'Bankroll_Total']].set_index('Date'))
+        
+        b1, b2, b3 = st.columns(3)
+        b1.metric("SU Net Profit", f"${sim_df['Profit_SU'].sum():,.2f}")
+        b2.metric("Spread Net Profit", f"${sim_df['Profit_Spread'].sum():,.2f}")
+        b3.metric("Total Net Profit", f"${sim_df['Profit_Total'].sum():,.2f}")
+        
+    else:
+        st.info("No history available.")

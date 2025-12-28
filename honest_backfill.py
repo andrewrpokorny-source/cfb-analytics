@@ -28,7 +28,7 @@ def fetch_with_retry(endpoint, params):
     return []
 
 def main():
-    print("--- ⚖️ RUNNING HONEST BACKFILL (LOGIC ENFORCED) ---")
+    print("--- ⚖️ RUNNING HONEST BACKFILL (WITH REAL ODDS) ---")
     
     # 1. Fetch ALL Data
     print("   -> Fetching full season data...")
@@ -70,6 +70,9 @@ def main():
                     'Manual_HomeScore': h_pts, 'Manual_AwayScore': a_pts,
                     'spread': line_data.get('spread'),
                     'overUnder': line_data.get('overUnder'),
+                    # NEW: Capture Moneyline Odds
+                    'Home_ML': line_data.get('homeMoneyline'),
+                    'Away_ML': line_data.get('awayMoneyline'),
                     'home_talent_score': tal_map.get(home, 10), 
                     'away_talent_score': tal_map.get(away, 10),
                     'home_srs_rating': srs_map.get(home, 0), 
@@ -116,13 +119,9 @@ def main():
         prob_win = model_moneyline.predict_proba(input_row)[0][1]
         ml_pick = row['HomeTeam'] if prob_win > 0.5 else row['AwayTeam']
         
-        # --- LOGIC ENFORCEMENT ---
-        # If we pick a team to cover a NEGATIVE spread, they MUST be the ML pick.
+        # LOGIC ENFORCEMENT
         if pick_line_spr < 0:
-            if ml_pick != pick_team_spr:
-                # Conflict detected: Favorite covered but didn't win? Impossible.
-                # Force ML to match the Spread pick (since we are confident they cover)
-                ml_pick = pick_team_spr
+            if ml_pick != pick_team_spr: ml_pick = pick_team_spr
 
         # TOTAL PREDICTION
         prob_tot = model_total.predict_proba(input_row)[0][1]
@@ -139,6 +138,8 @@ def main():
             "Total Pick": f"{pick_side} {row['overUnder']}", "Total Conf": f"{conf_tot:.1%}",
             "Pick_Team": pick_team_spr, "Pick_Line": pick_line_spr,
             "Pick_Side": pick_side, "Pick_Total": row['overUnder'],
+            # Store Real Odds
+            "Pick_ML_Odds": row['Home_ML'] if ml_pick == row['HomeTeam'] else row['Away_ML'],
             "Manual_HomeScore": row['Manual_HomeScore'],
             "Manual_AwayScore": row['Manual_AwayScore']
         })
@@ -153,7 +154,7 @@ def main():
     final_df = pd.concat([future, pd.DataFrame(history_rows)], ignore_index=True)
     final_df.to_csv("live_predictions.csv", index=False)
     
-    print(f"✅ SUCCESS: History regenerated with strict logic enforcement.")
+    print(f"✅ SUCCESS: History regenerated with REAL MONEYLINE ODDS.")
 
 if __name__ == "__main__":
     main()
