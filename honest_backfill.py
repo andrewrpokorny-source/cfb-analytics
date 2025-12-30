@@ -1,31 +1,17 @@
 import os
 import pandas as pd
-import requests
 import time
 from sklearn.ensemble import RandomForestClassifier
-from dotenv import load_dotenv
+from api import fetch_with_retry
+from config import VALID_BOOKS
 
 # --- CONFIG ---
-load_dotenv()
-API_KEY = os.getenv("CFBD_API_KEY")
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
 SPLIT_DATE = "2025-12-01" 
-VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
 FEATURES = [
     'spread', 'overUnder', 
     'home_talent_score', 'away_talent_score', 
     'home_srs_rating', 'away_srs_rating'
 ]
-
-def fetch_with_retry(endpoint, params):
-    url = f"https://api.collegefootballdata.com{endpoint}"
-    for attempt in range(1, 4):
-        try:
-            res = requests.get(url, headers=HEADERS, params=params)
-            if res.status_code == 200: return res.json()
-            elif res.status_code == 429: time.sleep(10 * attempt)
-        except: time.sleep(5)
-    return []
 
 def main():
     print("--- ⚖️ RUNNING HONEST BACKFILL (WITH REAL ODDS) ---")

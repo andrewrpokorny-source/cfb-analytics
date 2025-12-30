@@ -1,27 +1,11 @@
 import os
 import pandas as pd
 import joblib
-import requests
 import time
-from dotenv import load_dotenv
+from api import fetch_with_retry
+from config import HISTORY_CUTOFF, VALID_BOOKS
 
 # --- CONFIG ---
-load_dotenv()
-API_KEY = os.getenv("CFBD_API_KEY")
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-HISTORY_CUTOFF = "2025-12-01"
-VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
-
-def fetch_with_retry(endpoint, params):
-    url = f"https://api.collegefootballdata.com{endpoint}"
-    for attempt in range(1, 4):
-        try:
-            res = requests.get(url, headers=HEADERS, params=params)
-            if res.status_code == 200: return res.json()
-            elif res.status_code == 429:
-                time.sleep(10 * attempt)
-        except: time.sleep(5)
-    return []
 
 def main():
     print("--- 📜 RUNNING HISTORICAL BACKFILL (SINCE DEC 1) ---")

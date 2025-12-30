@@ -1,29 +1,12 @@
 import os
 import pandas as pd
 import joblib
-import requests
 import time
 from datetime import datetime
-from dotenv import load_dotenv
+from api import fetch_with_retry
+from config import HISTORY_FILE, VALID_BOOKS
 
-load_dotenv()
-API_KEY = os.getenv("CFBD_API_KEY")
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-HISTORY_FILE = "live_predictions.csv"
 YEAR = 2025
-VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
-
-def fetch_with_retry(endpoint, params):
-    url = f"https://api.collegefootballdata.com{endpoint}"
-    for attempt in range(1, 4): 
-        try:
-            res = requests.get(url, headers=HEADERS, params=params)
-            if res.status_code == 200: return res.json()
-            elif res.status_code == 429: 
-                print(f"      ⚠️ Rate limit hit. Sleeping {10 * attempt}s...")
-                time.sleep(10 * attempt)
-        except: time.sleep(5)
-    return []
 
 def main():
     print("--- 🏈 CFB QUANT ENGINE: DAILY UPDATE ---")

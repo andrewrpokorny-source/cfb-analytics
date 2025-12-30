@@ -1,23 +1,6 @@
-import os
-import time
-import requests
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-
-load_dotenv()
-API_KEY = os.getenv("CFBD_API_KEY")
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-
-def get_data(endpoint, params):
-    try:
-        response = requests.get(f"https://api.collegefootballdata.com{endpoint}", headers=HEADERS, params=params)
-        response.raise_for_status()
-        time.sleep(0.5) 
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching {endpoint}: {e}")
-        return []
+from api import get_data
 
 def calculate_weighted_decay(df_stats):
     df_stats = df_stats.sort_values(by=['team', 'season', 'week'])

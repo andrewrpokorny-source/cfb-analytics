@@ -1,15 +1,16 @@
 import pandas as pd
 import os
+from config import HISTORY_FILE
 
 def calculate_kelly():
     print("--- 💰 KELLY CRITERION BET SIZER 💰 ---")
     
     # 1. Load Predictions
-    if not os.path.exists("live_predictions.csv"):
-        print("Error: live_predictions.csv not found. Run predict.py first!")
+    if not os.path.exists(HISTORY_FILE):
+        print(f"Error: {HISTORY_FILE} not found. Run predict.py first!")
         return
         
-    df = pd.read_csv("live_predictions.csv")
+    df = pd.read_csv(HISTORY_FILE)
     
     # 2. Settings
     BANKROLL = 1000  # Example Bankroll ($1,000)

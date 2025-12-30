@@ -1,52 +1,7 @@
-import os
-import time
-import requests
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-
-# 1. Load environment variables
-load_dotenv()
-API_KEY = os.getenv("CFBD_API_KEY")
-
-if not API_KEY:
-    raise ValueError("API Key not found! Check your .env file.")
-
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Accept": "application/json"
-}
-
-def get_data(endpoint, params):
-    """
-    Generic helper to fetch data from CFBD API with rate limiting.
-    """
-    url = f"https://api.collegefootballdata.com{endpoint}"
-    try:
-        print(f"Fetching {endpoint} with params {params}...")
-        response = requests.get(url, headers=HEADERS, params=params)
-        response.raise_for_status()
-        time.sleep(0.5) 
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching {url}: {e}")
-        return []
-
-def normalize_game_columns(df):
-    """
-    Helper to standardize column names (handling snake_case vs camelCase).
-    """
-    # Map common camelCase variations to snake_case
-    rename_map = {
-        'homeTeam': 'home_team',
-        'awayTeam': 'away_team',
-        'homePoints': 'home_points',
-        'awayPoints': 'away_points',
-        'homeScore': 'home_points', # Sometimes it's called score
-        'awayScore': 'away_points'
-    }
-    df = df.rename(columns=rename_map)
-    return df
+from api import get_data
+from utils import normalize_game_columns
 
 def fetch_season_data(years):
     all_games = []
