@@ -59,6 +59,75 @@ def main():
                 print(f"   -> Updated {graded_count} games in history.")
             else:
                 print("   ⚠️ No matching scores found for pending games.")
+
+        # 1.5 CALCULATE BETTING RESULTS
+        if 'Manual_HomeScore' in df.columns and 'Manual_AwayScore' in df.columns:
+            # Ensure numeric columns
+            df['Manual_HomeScore'] = pd.to_numeric(df['Manual_HomeScore'], errors='coerce')
+            df['Manual_AwayScore'] = pd.to_numeric(df['Manual_AwayScore'], errors='coerce')
+            
+            # Filter for rows that have scores but might not have results
+            scored_mask = df['Manual_HomeScore'].notna() & df['Manual_AwayScore'].notna()
+            
+            if scored_mask.any():
+                print(f"   -> Grading {scored_mask.sum()} completed games...")
+                
+                for idx, row in df[scored_mask].iterrows():
+                    h_score = row['Manual_HomeScore']
+                    a_score = row['Manual_AwayScore']
+                    
+                    # --- GRADE SPREAD ---
+                    # Pick: "Team (Line)" e.g., "Louisiana Tech (-9.5)"
+                    # We stored "Pick_Team" and "Pick_Line" separately for easier grading
+                    p_team = row.get('Pick_Team')
+                    p_line = row.get('Pick_Line')
+                    
+                    if pd.notna(p_team) and pd.notna(p_line):
+                        # Calculate Margin from perspective of Pick Team
+                        if p_team == row['HomeTeam']:
+                            actual_margin = h_score - a_score
+                        else:
+                            actual_margin = a_score - h_score
+                            
+                        # Compare to spread line (e.g. -9.5)
+                        # If Actual Margin (9) + Line (-9.5) > 0 ?? No.
+                        # Standard Logic: If Team is -9.5, they must win by > 9.5. 
+                        # So Margin (9) > 9.5? False.
+                        # If Team is +3.5, they can lose by 3. Actual Margin (-3) > - (-3.5)? 
+                        
+                        # Simplified: Score + Line > Opponent Score?
+                        # If Pick is Home: (Home + Line) > Away
+                        if p_team == row['HomeTeam']:
+                            cover = (h_score + p_line) > a_score
+                            push = (h_score + p_line) == a_score
+                        else:
+                            cover = (a_score + p_line) > h_score
+                            push = (a_score + p_line) == h_score
+                            
+                        res = "PUSH" if push else ("WIN" if cover else "LOSS")
+                        df.at[idx, 'Spread_Result'] = res
+
+                    # --- GRADE TOTAL ---
+                    p_side = row.get('Pick_Side') # OVER / UNDER
+                    p_total = row.get('Pick_Total')
+                    
+                    if pd.notna(p_side) and pd.notna(p_total):
+                        total_score = h_score + a_score
+                        if p_side == "OVER":
+                            res = "WIN" if total_score > p_total else ("LOSS" if total_score < p_total else "PUSH")
+                        else: # UNDER
+                            res = "WIN" if total_score < p_total else ("LOSS" if total_score > p_total else "PUSH")
+                        df.at[idx, 'Total_Result'] = res
+                        
+                    # --- GRADE MONEYLINE ---
+                    p_ml_pick = row.get('Moneyline Pick')
+                    if pd.notna(p_ml_pick):
+                        winner = row['HomeTeam'] if h_score > a_score else row['AwayTeam']
+                        if p_ml_pick == winner:
+                            df.at[idx, 'ML_Result'] = "WIN"
+                        else:
+                            df.at[idx, 'ML_Result'] = "LOSS"
+
     else:
         df = pd.DataFrame()
 
