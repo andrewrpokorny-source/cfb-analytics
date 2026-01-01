@@ -131,7 +131,7 @@ def main():
     else:
         df = pd.DataFrame()
 
-    # 2. PREDICTION LOGIC (Unchanged)
+    # 2. PREDICTION LOGIC
     print("   -> Scanning for new matchups...")
     try:
         model_spread = joblib.load("model_spread_tuned.pkl")
@@ -142,6 +142,23 @@ def main():
         if not df.empty: df.to_csv(HISTORY_FILE, index=False)
         print("❌ Models missing."); return
 
+    # REFRESH LOGIC: Keep only completed games in history, regenerate all pending
+    if not df.empty and 'Manual_HomeScore' in df.columns:
+        # Keep rows where game is already graded (Score exists)
+        # OR keep rows that are clearly past (to preserve history even if not graded? No, usually we grade them.)
+        # Let's just keep graded ones.
+        graded_mask = df['Manual_HomeScore'].notna()
+        completed_games_df = df[graded_mask].copy()
+        
+        # Determine IDs we should NOT predict again (Completed IDs)
+        existing_ids = completed_games_df['GameID'].astype(str).tolist()
+        
+        # We will append new predictions to this 'clean' history
+        df = completed_games_df 
+        print(f"   -> Refreshing pending lines (Keeping {len(df)} graded games)...")
+    else:
+        existing_ids = []
+
     games = []; lines = []
     scenarios = [{"seasonType": "postseason", "week": 1}, {"seasonType": "regular", "week": 16}, {"seasonType": "regular", "week": 17}]
     
@@ -149,9 +166,8 @@ def main():
         g = fetch_with_retry("/games", {"year": YEAR, **s})
         l = fetch_with_retry("/lines", {"year": YEAR, **s})
         if isinstance(g, list): games.extend(g)
-        if isinstance(l, list): lines.extend(l)
+        if isinstance(l, list): lines.extend(l)    
 
-    existing_ids = df['GameID'].astype(str).tolist() if not df.empty and 'GameID' in df.columns else []
     lines_map = {}
     for g in lines:
         valid = [l for l in g.get('lines', []) if l.get('provider') in VALID_BOOKS]
