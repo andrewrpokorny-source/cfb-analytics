@@ -15,6 +15,6 @@ HEADERS = {
 }
 
 # Constants
-VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet']
+VALID_BOOKS = ['DraftKings', 'FanDuel', 'BetMGM', 'Caesars', 'PointsBet', 'BetRivers', 'Unibet', 'Bovada', 'ESPN Bet']
 HISTORY_FILE = "live_predictions.csv"
 HISTORY_CUTOFF = "2025-12-01"

@@ -176,69 +176,67 @@ def main():
             game_lines = lines_map.get(gid, [])
             if not game_lines: continue 
 
-            best_spread = {"conf": 0.0, "pick": "Pending"}
-            best_total = {"conf": 0.0, "pick": "Pending"}
-            best_ml = {"conf": 0.0, "pick": "Pending"}
-            active_odds = None
+            # Calculate Consensus (Median) Lines
+            spreads = [l.get('spread') for l in game_lines if l.get('spread') is not None]
+            totals = [l.get('overUnder') for l in game_lines if l.get('overUnder') is not None]
 
+            if not spreads or not totals: continue
+
+            import statistics
+            median_spread = statistics.median(spreads)
+            median_total = statistics.median(totals)
+
+            # Find best available odds for the median line (or closest to it)
+            # For now, we just use the median line as the "Market" truth
+            
+            row = {
+                'spread': median_spread,
+                'overUnder': median_total,
+                'home_talent_score': tal_map.get(home, 10), 
+                'away_talent_score': tal_map.get(away, 10),
+                'home_srs_rating': srs_map.get(home, 0), 
+                'away_srs_rating': srs_map.get(away, 0)
+            }
+            input_df = pd.DataFrame([row])[feat_cols]
+
+            # PREDICTIONS
+            # 1. Spread
+            prob = model_spread.predict_proba(input_df)[0][1] # Prob Home Covers
+            conf_spread = max(prob, 1-prob)
+            p_spread_team = home if prob > 0.5 else away
+            p_spread_line = median_spread if prob > 0.5 else -median_spread
+            
+            # 2. Total
+            prob = model_total.predict_proba(input_df)[0][1] # Prob Over
+            conf_total = max(prob, 1-prob)
+            p_total_side = "OVER" if prob > 0.5 else "UNDER"
+            
+            # 3. Moneyline
+            prob = model_win.predict_proba(input_df)[0][1] # Prob Home Win
+            conf_ml = max(prob, 1-prob)
+            p_ml_team = home if prob > 0.5 else away
+            
+            # Find best odds for the moneyline pick
+            active_odds = None
             for line in game_lines:
-                spread_val = line.get('spread')
-                total_val = line.get('overUnder')
                 h_ml = line.get('homeMoneyline')
                 a_ml = line.get('awayMoneyline')
-                if spread_val is None or total_val is None: continue
+                if p_ml_team == home and h_ml:
+                    if active_odds is None or h_ml > active_odds: active_odds = h_ml
+                elif p_ml_team == away and a_ml:
+                    if active_odds is None or a_ml > active_odds: active_odds = a_ml
 
-                row = {
-                    'spread': spread_val,
-                    'overUnder': total_val,
-                    'home_talent_score': tal_map.get(home, 10), 
-                    'away_talent_score': tal_map.get(away, 10),
-                    'home_srs_rating': srs_map.get(home, 0), 
-                    'away_srs_rating': srs_map.get(away, 0)
-                }
-                input_df = pd.DataFrame([row])[feat_cols]
-
-                # PREDICTIONS
-                prob = model_spread.predict_proba(input_df)[0][1]
-                conf = max(prob, 1-prob)
-                if conf > best_spread['conf']:
-                    p_team = home if prob > 0.5 else away
-                    p_line = spread_val if prob > 0.5 else -spread_val
-                    best_spread = {"conf": conf, "pick": f"{p_team} ({p_line})", "pick_team": p_team, "pick_line": p_line}
-
-                prob = model_total.predict_proba(input_df)[0][1]
-                conf = max(prob, 1-prob)
-                if conf > best_total['conf']:
-                    side = "OVER" if prob > 0.5 else "UNDER"
-                    best_total = {"conf": conf, "pick": f"{side} {total_val}", "pick_side": side, "pick_val": total_val}
-                    
-                prob = model_win.predict_proba(input_df)[0][1]
-                conf = max(prob, 1-prob)
-                if conf > best_ml['conf']:
-                    ml_team = home if prob > 0.5 else away
-                    best_ml = {"conf": conf, "pick": ml_team}
-                    active_odds = h_ml if ml_team == home else a_ml
-
-            # Logic Enforcement
-            if best_spread['conf'] > 0:
-                if best_spread.get('pick_line', 0) < 0:
-                    if best_ml['pick'] != best_spread['pick_team']:
-                        best_ml['pick'] = best_spread['pick_team']
-                        for line in game_lines:
-                            h_ml, a_ml = line.get('homeMoneyline'), line.get('awayMoneyline')
-                            active_odds = h_ml if best_ml['pick'] == home else a_ml
-                            break
-
-                new_predictions.append({
-                    "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
-                    "StartDate": g.get('start_date') or g.get('startDate'),
-                    "Moneyline Pick": best_ml['pick'], "Moneyline Conf": f"{best_ml['conf']:.1%}", 
-                    "Spread Pick": best_spread['pick'], "Spread Conf": f"{best_spread['conf']:.1%}", 
-                    "Total Pick": best_total['pick'], "Total Conf": f"{best_total['conf']:.1%}",
-                    "Pick_Team": best_spread.get('pick_team'), "Pick_Line": best_spread.get('pick_line'),
-                    "Pick_Side": best_total.get('pick_side'), "Pick_Total": best_total.get('pick_val'),
-                    "Pick_ML_Odds": active_odds
-                })
+            # Store Prediction
+            new_predictions.append({
+                "GameID": gid, "HomeTeam": home, "AwayTeam": away, "Game": f"{away} @ {home}",
+                "StartDate": g.get('start_date') or g.get('startDate'),
+                "Moneyline Pick": p_ml_team, "Moneyline Conf": f"{conf_ml:.1%}", 
+                "Spread Pick": f"{p_spread_team} ({p_spread_line})", "Spread Conf": f"{conf_spread:.1%}", 
+                "Total Pick": f"{p_total_side} {median_total}", "Total Conf": f"{conf_total:.1%}",
+                "Pick_Team": p_spread_team, "Pick_Line": p_spread_line,
+                "Pick_Side": p_total_side, "Pick_Total": median_total,
+                "Pick_ML_Odds": active_odds
+            })
 
     if new_predictions:
         print(f"   -> Added {len(new_predictions)} new forecasts.")
