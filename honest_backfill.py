@@ -6,7 +6,7 @@ from api import fetch_with_retry
 from config import VALID_BOOKS
 
 # --- CONFIG ---
-SPLIT_DATE = "2025-12-01" 
+SPLIT_DATE = "2025-08-01" 
 FEATURES = [
     'spread', 'overUnder', 
     'home_talent_score', 'away_talent_score', 
@@ -130,17 +130,60 @@ def main():
             "Manual_AwayScore": row['Manual_AwayScore']
         })
 
-    # 5. SAVE
-    try:
-        existing = pd.read_csv("live_predictions.csv")
-        future = existing[existing['Manual_HomeScore'].isna()]
-    except:
-        future = pd.DataFrame()
-        
-    final_df = pd.concat([future, pd.DataFrame(history_rows)], ignore_index=True)
-    final_df.to_csv("live_predictions.csv", index=False)
+    # 5. SAVE & REPORT
+    results_df = pd.DataFrame(history_rows)
     
-    print(f"✅ SUCCESS: History regenerated with REAL MONEYLINE ODDS.")
+    # Grade Results Immediately for Report
+    results_df['Spread_Result'] = "LOSS"
+    results_df['ML_Result'] = "LOSS"
+    results_df['Total_Result'] = "LOSS"
+    
+    for idx, row in results_df.iterrows():
+        # Spread
+        margin = row['Manual_HomeScore'] - row['Manual_AwayScore']
+        if row['Pick_Team'] == row['AwayTeam']: margin = -margin 
+        # (If pick is Away, margin is Away - Home. But above is Home - Away. So negative.)
+        # Wait, let's keep it simple. Score + Line > Opponent?
+        home = row['HomeTeam']
+        away = row['AwayTeam']
+        h_score = row['Manual_HomeScore']
+        a_score = row['Manual_AwayScore']
+        
+        # Spread
+        if row['Pick_Team'] == home:
+            cover = (h_score + row['Pick_Line']) > a_score
+            push = (h_score + row['Pick_Line']) == a_score
+        else:
+            cover = (a_score + row['Pick_Line']) > h_score
+            push = (a_score + row['Pick_Line']) == h_score
+        results_df.at[idx, 'Spread_Result'] = "PUSH" if push else ("WIN" if cover else "LOSS")
+        
+        # ML
+        winner = home if h_score > a_score else away
+        if row['Moneyline Pick'] == winner:
+            results_df.at[idx, 'ML_Result'] = "WIN"
+            
+        # Total
+        total_score = h_score + a_score
+        if row['Pick_Side'] == "OVER":
+            res = "WIN" if total_score > row['Pick_Total'] else ("LOSS" if total_score < row['Pick_Total'] else "PUSH")
+        else:
+            res = "WIN" if total_score < row['Pick_Total'] else ("LOSS" if total_score > row['Pick_Total'] else "PUSH")
+        results_df.at[idx, 'Total_Result'] = res
+
+    results_df.to_csv("backtest_2025.csv", index=False)
+    
+    print("\n--- 📊 2025 SEASON RESULTS ---")
+    for bet_type, col in [("Spread", "Spread_Result"), ("Moneyline", "ML_Result"), ("Total", "Total_Result")]:
+        counts = results_df[col].value_counts()
+        wins = counts.get("WIN", 0)
+        losses = counts.get("LOSS", 0)
+        pushes = counts.get("PUSH", 0)
+        total_graded = wins + losses
+        win_rate = (wins / total_graded * 100) if total_graded > 0 else 0
+        print(f"{bet_type}: {wins}-{losses}-{pushes} ({win_rate:.1f}%)")
+
+    print(f"\n✅ SUCCESS: Full season backtest saved to backtest_2025.csv")
 
 if __name__ == "__main__":
     main()
