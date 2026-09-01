@@ -1,0 +1,2 @@
+bet_id,logged_at,season,week,game,home,away,commence,market,side,line_taken,price_taken,book,fair_line_at_log,ev_at_log,n_books_at_log,strategy,close_line,close_price,clv_points,clv_pct,home_score,away_score,result,profit_units
+2026-1-Oklahoma State @ Tulsa-total-UNDER-high_total_under_58,2026-09-01T00:07:13.021652+00:00,2026,1,Oklahoma State @ Tulsa,Tulsa,Oklahoma State,2026-09-05T19:45:00.000Z,total,UNDER,59.5,-110,Bovada,58.5,0.02488038277511967,2,high_total_under_58,,,,,,,,

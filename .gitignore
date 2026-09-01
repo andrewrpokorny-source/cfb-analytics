@@ -13,3 +13,5 @@ __pycache__/
 
 # Ignore system files
 .DS_Store
+# Paper trading ledger is real evidence — keep it, but ignore local scratch
+data_cache/
