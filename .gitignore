@@ -15,3 +15,6 @@ __pycache__/
 .DS_Store
 # Paper trading ledger is real evidence — keep it, but ignore local scratch
 data_cache/
+
+# Streamlit secrets: set them in Streamlit Cloud app settings, never commit
+.streamlit/secrets.toml

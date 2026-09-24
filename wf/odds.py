@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import requests
 
 from .cache import fetch as cfbd_fetch
+from .dataset import clean_books
 
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 SPORT = "americanfootball_ncaaf"
@@ -34,6 +35,7 @@ class Quote:
     line: float | None     # points; None for moneyline
     price: int             # American odds
     fetched_at: str
+    price_assumed: bool = False   # True when the feed carries no price (CFBD)
 
     def to_dict(self):
         return asdict(self)
@@ -155,7 +157,7 @@ def parse_theoddsapi(payload, alias=None):
         gk = f"{away} @ {home}"
         commence = ev.get("commence_time")
         for bk in ev.get("bookmakers", []):
-            book = bk.get("title") or bk.get("key")
+            book = (bk.get("title") or bk.get("key") or "").strip()
             for mk in bk.get("markets", []):
                 kind = {"spreads": "spread", "totals": "total", "h2h": "ml"}.get(mk.get("key"))
                 if not kind:
@@ -190,16 +192,19 @@ def fetch_cfbd(year, week, season_type="regular", verbose=True):
             continue
         gk = f"{away} @ {home}"
         commence = g.get("startDate")
-        for b in g.get("lines") or []:
+        # dedupe "DraftKings"/"Draft Kings" and drop home/away-swapped rows
+        for b in clean_books(g.get("lines") or []):
             book = b.get("provider")
             sp, ou = b.get("spread"), b.get("overUnder")
+            # CFBD carries NO spread or totals price. -110 is a placeholder so
+            # the lines can be compared, and every such quote is flagged
+            # price_assumed=True so nothing downstream mistakes it for a price.
             if sp is not None:
-                # CFBD gives no spread juice; assume standard -110 both ways.
-                quotes.append(Quote(gk, home, away, commence, book, "spread", home, float(sp), -110, now))
-                quotes.append(Quote(gk, home, away, commence, book, "spread", away, -float(sp), -110, now))
+                quotes.append(Quote(gk, home, away, commence, book, "spread", home, float(sp), -110, now, True))
+                quotes.append(Quote(gk, home, away, commence, book, "spread", away, -float(sp), -110, now, True))
             if ou is not None:
-                quotes.append(Quote(gk, home, away, commence, book, "total", "OVER", float(ou), -110, now))
-                quotes.append(Quote(gk, home, away, commence, book, "total", "UNDER", float(ou), -110, now))
+                quotes.append(Quote(gk, home, away, commence, book, "total", "OVER", float(ou), -110, now, True))
+                quotes.append(Quote(gk, home, away, commence, book, "total", "UNDER", float(ou), -110, now, True))
             if b.get("homeMoneyline"):
                 quotes.append(Quote(gk, home, away, commence, book, "ml", home, None, int(b["homeMoneyline"]), now))
             if b.get("awayMoneyline"):
@@ -230,4 +235,4 @@ def save_quotes(quotes, path):
 
 def load_quotes(path):
     with open(path) as f:
-        return [Quote(**d) for d in json.load(f)]
+        return [Quote(**{**{'price_assumed': False}, **d}) for d in json.load(f)]

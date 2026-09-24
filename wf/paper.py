@@ -30,7 +30,8 @@ COLUMNS = ["bet_id", "logged_at", "season", "week", "game", "home", "away",
            "commence", "market", "side", "line_taken", "price_taken", "book",
            "fair_line_at_log", "ev_at_log", "n_books_at_log", "strategy",
            "close_line", "close_price", "clv_points", "clv_pct",
-           "home_score", "away_score", "result", "profit_units"]
+           "home_score", "away_score", "result", "profit_units",
+           "price_assumed", "middle_id", "note"]
 
 
 _STR_COLS = ["bet_id", "logged_at", "game", "home", "away", "commence",
@@ -57,45 +58,97 @@ def _save(df):
 
 # ------------------------------------------------------------ strategies
 #
-# Only rules that survived the sweep. See wf/README_SHOPPING.md for why the
-# list is this short.
+# Only the three candidates that survived the alpha hunt (see research/FINDINGS.md).
+# NONE is proven. They are logged to gather evidence, not because they win.
+
+MAX_UNDER_PRICE = -112   # the unders edge is +1.5% at -115 and negative at -120
 
 
-def strategy_high_total_under(offers, min_total=58.0):
-    """The one live signal: UNDER on high totals. 54.4% historically at >=60,
-    but the 95% CI still contains break-even — this is evidence-gathering."""
+def _price_ok(price, floor):
+    """True if American `price` pays at least as well as `floor` (e.g. -112)."""
+    return shop.to_decimal(price) >= shop.to_decimal(floor) - 1e-9
+
+
+def strategy_high_total_under(offers, min_total=58.0, **_):
+    """Candidate #2: UNDER on high totals. Mechanism: posted totals over-extrapolate
+    (actual points rise only ~0.9 per posted point; the shortfall is 2nd-half).
+    54.3% at OU>=60 2017-25, CI still contains break-even. Price-gated at -112:
+    with a real price worse than that, it is not logged."""
     if offers.empty:
         return offers
     m = ((offers["market"] == "total") & (offers["side"] == "UNDER")
          & (offers["fair_line"] >= min_total))
     out = offers[m].copy()
+    real = ~out["price_assumed"]
+    ok = out["best_price"].map(lambda p: _price_ok(p, MAX_UNDER_PRICE))
+    out = out[~real | ok]
     out["strategy"] = f"high_total_under_{min_total:g}"
+    out["note"] = ""
     return out
 
 
-def strategy_shop_value(offers, min_gain=0.01, min_books=4):
-    """Pure execution: offers where the best book beats the median book by
-    enough to matter.
+def strategy_open_field_dog(offers, features=None, threshold=0.5, **_):
+    """Candidate #3: back the underdog when the favourite plays in the higher
+    open-field-yards environment. Lane reported 56.2% (2018-25); rebuilt from
+    scratch in Sep 2026 it reproduces at only ~53.4% above a 0.5 edge (z<1).
+    Weakest of the three."""
+    if offers.empty or features is None or features.empty:
+        return offers.iloc[0:0]
+    f = features.set_index("game")
+    sp = offers[offers["market"] == "spread"].copy()
+    sp = sp[sp["game"].isin(f.index)]
+    if sp.empty:
+        return sp
+    sp["ofyd_mis"] = sp["game"].map(f["ofyd_mis"])
+    sp["home_spread"] = sp["game"].map(f["spread"])
+    sp = sp.dropna(subset=["ofyd_mis", "home_spread"])
+    sp = sp[sp["home_spread"] != 0]
+    home_fav = sp["home_spread"] < 0
+    fav_env = np.where(home_fav, sp["ofyd_mis"], -sp["ofyd_mis"])
+    dog = np.where(home_fav, sp["away"], sp["home"])
+    out = sp[(sp["side"] == dog) & (fav_env >= threshold)].copy()
+    out["strategy"] = f"open_field_dog_{threshold:g}"
+    out["note"] = ""
+    return out
 
-    REQUIRES a real multi-book consensus. With 2-3 books the de-vigged fair
-    price is derived from the very books being shopped, so the best offer
-    always looks +EV — and the artifact is worst on longshots, where payouts
-    are large. Backtested on 2025 wk5 CFBD data (3 books) this went 22-46
-    (32.4%) by systematically buying away underdogs off fake edge. Gate it.
-    """
+
+def strategy_shop_value(offers, min_gain=0.01, min_books=4, **_):
+    """Pure execution test: the best book beats the median by >=1% EV.
+
+    Needs a real multi-book consensus. On 2-3 books the de-vigged fair price
+    comes from the very books being shopped, so the best offer always looks
+    +EV; run unguarded on 2025 wk5 CFBD data this went 22-46 (32.4%)."""
     if offers.empty:
         return offers
     out = offers[(offers["shop_gain"] >= min_gain)
                  & (offers["n_books"] >= min_books)
-                 & (~offers["both_sides_pos"])].copy()
+                 & (~offers["both_sides_pos"])
+                 & (~offers["price_assumed"])].copy()
     out["strategy"] = f"shop_gain_{min_gain:g}"
+    out["note"] = ""
     return out
 
 
 STRATEGIES = {
     "high_total_under": strategy_high_total_under,
+    "open_field_dog": strategy_open_field_dog,
     "shop_value": strategy_shop_value,
 }
+
+
+def _live_features(season, week):
+    """As-of-week features for this week's games, keyed like the quotes."""
+    try:
+        from . import dataset as ds
+        f = ds.build_season(season, "regular", verbose=False)
+    except Exception as e:  # API down / quota
+        print(f"   features unavailable ({e.__class__.__name__}); open_field_dog skipped")
+        return pd.DataFrame()
+    if f.empty:
+        return f
+    f = f[f["week"] == week].copy()
+    f["game"] = f["away_team"] + " @ " + f["home_team"]
+    return f[["game", "ofyd_mis", "spread"]]
 
 
 def _drop_started(offers, lead_minutes=0):
@@ -111,6 +164,32 @@ def _drop_started(offers, lead_minutes=0):
     return offers[future].copy()
 
 
+def _middle_rows(quotes, season, week, now, min_width=2.5):
+    """Candidate #1: cross-book total middles, logged as two linked legs."""
+    m = shop.find_middles(quotes, min_width=min_width)
+    if m.empty:
+        return []
+    ts = pd.to_datetime(m["commence"], errors="coerce", utc=True)
+    m = m[ts > pd.Timestamp.now(tz="UTC")]
+    rows = []
+    for _, r in m.iterrows():
+        mid = f"{season}-{week}-{r['game']}-mid{r['over_line']:g}-{r['under_line']:g}"
+        for side, book, line, price in (("OVER", r["over_book"], r["over_line"], r["over_price"]),
+                                        ("UNDER", r["under_book"], r["under_line"], r["under_price"])):
+            rows.append({
+                "bet_id": f"{mid}-{side}", "logged_at": now, "season": season, "week": week,
+                "game": r["game"], "home": r["home"], "away": r["away"], "commence": r["commence"],
+                "market": "total", "side": side, "line_taken": line, "price_taken": price,
+                "book": book, "fair_line_at_log": r["fair_line"], "ev_at_log": r["ev_per_middle"],
+                "n_books_at_log": np.nan, "strategy": f"total_middle_{min_width:g}",
+                "price_assumed": bool(r["price_assumed"]), "middle_id": mid,
+                "note": f"width {r['width']:g}",
+            })
+    if rows:
+        print(f"   total_middle: {len(rows)//2} middles")
+    return rows
+
+
 # ------------------------------------------------------------ commands
 
 
@@ -120,7 +199,9 @@ def cmd_log(season, week, strategies=None, prefer="theoddsapi"):
     if not quotes:
         print("   no quotes available; nothing logged")
         return
-    offers = shop.best_offers(quotes)
+    # min_edge=-1: strategies decide, not the EV filter. With a real consensus
+    # an UNDER at the fair number is ~-2% EV and the old default dropped it.
+    offers = shop.best_offers(quotes, min_edge=-1.0)
     if offers.empty:
         print("   no priceable offers")
         return
@@ -132,19 +213,17 @@ def cmd_log(season, week, strategies=None, prefer="theoddsapi"):
         print("   every game in this week has already kicked off; nothing to log")
         return
 
+    features = _live_features(season, week) if (strategies is None or "open_field_dog" in strategies) else None
     picks = []
     for name in (strategies or STRATEGIES):
-        sel = STRATEGIES[name](offers)
+        sel = STRATEGIES[name](offers, features=features)
         if not sel.empty:
             picks.append(sel)
             print(f"   {name}: {len(sel)} picks")
-    if not picks:
-        print("   no picks matched any strategy")
-        return
 
-    new = pd.concat(picks, ignore_index=True)
+    new = pd.concat(picks, ignore_index=True) if picks else pd.DataFrame()
     now = datetime.now(timezone.utc).isoformat()
-    rows = []
+    rows = _middle_rows(quotes, season, week, now)
     for _, r in new.iterrows():
         rows.append({
             "bet_id": f"{season}-{week}-{r['game']}-{r['market']}-{r['side']}-{r['strategy']}",
@@ -155,8 +234,13 @@ def cmd_log(season, week, strategies=None, prefer="theoddsapi"):
             "book": r["best_book"], "fair_line_at_log": r["fair_line"],
             "ev_at_log": r["ev_best"], "n_books_at_log": r["n_books"],
             "strategy": r["strategy"],
+            "price_assumed": bool(r.get("price_assumed", False)),
+            "note": r.get("note", ""),
         })
 
+    if not rows:
+        print("   no picks matched any strategy")
+        return
     led = _load()
     add = pd.DataFrame(rows).reindex(columns=COLUMNS)
     add = add[~add["bet_id"].isin(set(led["bet_id"]))]
@@ -317,7 +401,23 @@ def cmd_report(season=None):
         print("\n    Positive mean CLV is the leading indicator. Negative CLV with a")
         print("    winning record means you got lucky, not sharp.")
 
+    if "price_assumed" in led.columns:
+        pa = led["price_assumed"].astype(str).str.lower().eq("true")
+        if pa.any():
+            print(f"\n  !! {int(pa.sum())} of {len(led)} bets carry an ASSUMED -110 price (CFBD has")
+            print("     no prices). Their ROI below is not a real number. Set ODDS_API_KEY.")
+
     done = led.dropna(subset=["result"])
+    if "middle_id" in done.columns and done["middle_id"].notna().any():
+        mids = done[done["middle_id"].notna()].groupby("middle_id")
+        full = [g for _, g in mids if len(g) == 2]
+        if full:
+            hit = sum(1 for g in full if (g["result"] == "WIN").all())
+            pnl = sum(g["profit_units"].sum() for g in full)
+            print(f"\n  --- TOTAL MIDDLES (scored per pair) ---")
+            print(f"    {len(full)} middles, {hit} hit both legs ({hit/len(full)*100:.1f}%), "
+                  f"P&L {pnl:+.2f}u on {2*len(full)}u staked")
+            print("    historical: 9.2% hit, +8.6% per middle (2019-25, n=261)")
     if not done.empty:
         print(f"\n  --- RESULTS (noisy; needs hundreds of bets) ---")
         for strat, g in done.groupby("strategy"):

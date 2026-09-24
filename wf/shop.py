@@ -23,6 +23,10 @@ with open(_DIST_PATH) as f:
 KEY_NUMBERS = [3, 7, 10, 14, 6, 4, 17, 21]
 
 
+def _canon(name):
+    return "".join((name or "").split()).casefold()
+
+
 # ------------------------------------------------------------ odds helpers
 
 
@@ -184,11 +188,14 @@ def best_offers(quotes, min_edge=0.0):
             "commence": best_q.commence, "market": market, "side": side,
             "best_book": best_q.book, "best_line": best_q.line, "best_price": best_q.price,
             "fair_line": f.get("fair_line"), "fair_prob": f.get("fair_prob"),
-            "n_books": len(priced),
+            # distinct books, not quotes — CFBD reports DraftKings twice
+            "n_books": len({_canon(q.book) for q, _ in priced}),
             # With few books the "fair" line is barely more than the best book's
             # own number, so EV is mostly an artifact. Flag it rather than imply
             # precision we do not have.
-            "consensus_ok": len(priced) >= 4,
+            "consensus_ok": len({_canon(q.book) for q, _ in priced}) >= 4,
+            # True when any quote's price was a placeholder, not observed.
+            "price_assumed": any(getattr(q, "price_assumed", False) for q, _ in priced),
             "ev_best": best_ev, "ev_median": median_ev,
             "shop_gain": best_ev - median_ev,
             "key_crossed": ",".join(str(k) for k in
@@ -213,6 +220,50 @@ def best_offers(quotes, min_edge=0.0):
         (df["best_line"].abs() - df["fair_line"].abs()).abs() * 2, np.nan)
 
     return df[df["ev_best"] >= min_edge].sort_values("ev_best", ascending=False).reset_index(drop=True)
+
+
+def find_middles(quotes, min_width=2.5, market="total"):
+    """Cross-book TOTAL middles: OVER at the lowest book, UNDER at the highest.
+
+    Alpha-hunt candidate #1 (2019-25, n=261, ~37/season): width >= 2.5 hit 9.20%
+    with EV +8.64% per middle at -110/-110, 95% CI [+1.95%, +15.33%]. It needs no
+    forecast, only two books that disagree. EV here is recomputed per game from
+    the empirical residual distribution and the prices actually on offer.
+    """
+    by = defaultdict(list)
+    for q in quotes:
+        if q.market == market and q.line is not None:
+            by[q.game_key].append(q)
+    rows = []
+    for gk, qs in by.items():
+        overs = [q for q in qs if q.side == "OVER"]
+        unders = [q for q in qs if q.side == "UNDER"]
+        if not overs or not unders:
+            continue
+        o = min(overs, key=lambda q: (q.line, -to_decimal(q.price)))
+        u = max(unders, key=lambda q: (q.line, to_decimal(q.price)))
+        width = u.line - o.line
+        if width < min_width or _canon(o.book) == _canon(u.book):
+            continue
+        fair = float(np.median([q.line for q in qs]))
+        kind = "total"
+        # P(total > o.line) and P(total < u.line), with push masses
+        p_over = sf(kind, o.line - fair)
+        p_over_push = push_prob(kind, o.line - fair)
+        p_under = 1.0 - sf(kind, u.line - fair) - push_prob(kind, u.line - fair)
+        p_under_push = push_prob(kind, u.line - fair)
+        ev_over = p_over * to_decimal(o.price) - max(0.0, 1 - p_over - p_over_push)
+        ev_under = p_under * to_decimal(u.price) - max(0.0, 1 - p_under - p_under_push)
+        rows.append({
+            "game": gk, "home": o.home_team, "away": o.away_team, "commence": o.commence,
+            "over_book": o.book, "over_line": o.line, "over_price": o.price,
+            "under_book": u.book, "under_line": u.line, "under_price": u.price,
+            "width": width, "fair_line": fair,
+            "ev_per_middle": (ev_over + ev_under) / 2.0,   # per unit staked, 2 units at risk
+            "price_assumed": bool(getattr(o, "price_assumed", False) or getattr(u, "price_assumed", False)),
+        })
+    df = pd.DataFrame(rows)
+    return df.sort_values("width", ascending=False).reset_index(drop=True) if len(df) else df
 
 
 def report(quotes, top=25, min_edge=0.0):

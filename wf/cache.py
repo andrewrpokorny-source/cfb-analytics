@@ -48,23 +48,34 @@ def fetch(endpoint, params=None, refresh=False):
             pass  # corrupt cache entry; refetch
 
     url = f"{BASE_URL}{endpoint}"
-    data = []
+    data, ok, last_status = [], False, None
     for attempt in range(1, 5):
         try:
             res = requests.get(url, headers=HEADERS, params=params, timeout=60)
+            last_status = res.status_code
             if res.status_code == 200:
-                data = res.json()
+                data, ok = res.json(), True
                 break
             if res.status_code == 429:
+                # A monthly-quota 429 will not clear by waiting; a burst 429 will.
+                if "quota" in res.text.lower():
+                    break
                 time.sleep(8 * attempt)
                 continue
             if res.status_code >= 500:
                 time.sleep(3 * attempt)
                 continue
-            print(f"   ! {endpoint} {params} -> HTTP {res.status_code}")
             break
         except requests.RequestException:
             time.sleep(3 * attempt)
+
+    if not ok:
+        # NEVER cache a failure. Writing [] here once poisoned 77 historical
+        # entries when the CFBD monthly quota ran out: every later read saw
+        # "no data" and silently treated it as truth. Return [] for this call
+        # only, loudly, and leave the disk alone so the next run refetches.
+        print(f"   ! {endpoint} {params} -> HTTP {last_status} (not cached)")
+        return []
 
     with open(path, "w") as f:
         json.dump(data, f)

@@ -42,6 +42,8 @@ ADV_FIELDS = [
     ("def_expl", "defense.explosiveness"),
     ("def_ppo", "defense.pointsPerOpportunity"),
     ("def_stuff", "defense.stuffRate"),
+    ("off_ofy", "offense.openFieldYards"),
+    ("def_ofy", "defense.openFieldYards"),
     ("plays", "offense.plays"),
 ]
 
@@ -54,6 +56,43 @@ PROVENANCE = {
     "market": "betting line (safe)",
     "sched": "schedule-derived (safe)",
 }
+
+
+def canonical_book(name):
+    """CFBD reports some books under two spellings ("DraftKings"/"Draft Kings")."""
+    return "".join((name or "").split()).casefold()
+
+
+def orientation_ok(b):
+    """False when a book row's spread and moneyline name opposite favourites.
+
+    CFBD /lines swaps home/away fields on ~1.75% of rows (8.3% in week 1).
+    Those rows once manufactured a fake 19% cross-book moneyline 'arbitrage'.
+    Only flag unambiguous cases: a real spread (|s|>=1) and a real ML favourite.
+    """
+    sp, hml, aml = b.get("spread"), b.get("homeMoneyline"), b.get("awayMoneyline")
+    if sp is None or not hml or not aml or abs(sp) < 1:
+        return True
+    home_fav_by_spread = sp < 0
+    home_fav_by_ml = hml < aml
+    return home_fav_by_spread == home_fav_by_ml
+
+
+def clean_books(lines, allowed=None):
+    """Deduplicate providers by canonical name and drop mis-oriented rows."""
+    allowed_c = {canonical_book(x) for x in allowed} if allowed else None
+    seen, out = set(), []
+    for b in lines:
+        c = canonical_book(b.get("provider"))
+        if not c or c in seen:
+            continue
+        if allowed_c is not None and c not in allowed_c:
+            continue
+        if not orientation_ok(b):
+            continue
+        seen.add(c)
+        out.append(b)
+    return out
 
 
 def american_to_decimal(odds):
@@ -162,7 +201,7 @@ def _lines_map(year, season_type):
     if not isinstance(recs, list):
         return out
     for g in recs:
-        books = [b for b in (g.get("lines") or []) if b.get("provider") in VALID_BOOKS]
+        books = clean_books(g.get("lines") or [], VALID_BOOKS)
         if not books:
             continue
         spreads = [b["spread"] for b in books if b.get("spread") is not None]
@@ -305,13 +344,25 @@ def build_season(year, season_type="regular", verbose=True):
     diff("ret_ppa_diff", "ret_ppa")
     diff("rest_diff", "rest")
 
-    # net efficiency: my offense minus their defense
+    # Expected efficiency of my offense against their defense. CFBD defensive
+    # ppa/successRate are what the defense ALLOWS (higher = worse defense), so
+    # the opponent's defensive number is ADDED. The original code subtracted it,
+    # which flipped the sign and left net_ppa_diff at r=+0.06 with margin while
+    # its own components sat at |r|~0.28.
     for a_side, b_side in (("home", "away"), ("away", "home")):
         df[f"{a_side}_net_ppa"] = (pd.to_numeric(df[f"{a_side}_off_ppa"], errors="coerce")
-                                   - pd.to_numeric(df[f"{b_side}_def_ppa"], errors="coerce"))
+                                   + pd.to_numeric(df[f"{b_side}_def_ppa"], errors="coerce"))
         df[f"{a_side}_net_sr"] = (pd.to_numeric(df[f"{a_side}_off_sr"], errors="coerce")
-                                  - pd.to_numeric(df[f"{b_side}_def_sr"], errors="coerce"))
+                                  + pd.to_numeric(df[f"{b_side}_def_sr"], errors="coerce"))
     df["net_ppa_diff"] = df["home_net_ppa"] - df["away_net_ppa"]
+    # Open-field-yards ENVIRONMENT contrast (alpha-hunt candidate #3): how much
+    # open-field yardage the home side's games produce vs the away side's.
+    # Algebraically (home_off+home_def) - (away_off+away_def); it is a game-
+    # environment measure, not a quality gap.
+    df["ofyd_mis"] = ((pd.to_numeric(df["home_off_ofy"], errors="coerce")
+                       + pd.to_numeric(df["home_def_ofy"], errors="coerce"))
+                      - (pd.to_numeric(df["away_off_ofy"], errors="coerce")
+                         + pd.to_numeric(df["away_def_ofy"], errors="coerce")))
     df["net_sr_diff"] = df["home_net_sr"] - df["away_net_sr"]
 
     # line movement (market disagreement with itself)

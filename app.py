@@ -1,219 +1,192 @@
-import streamlit as st
-import pandas as pd
-import os
-import hmac
-from dotenv import load_dotenv
+"""CFB Quant Engine — research findings and the 2026 paper ledger.
 
-# --- CONFIG ---
+Deployed on Streamlit Community Cloud from this repo. The app reads only files
+committed here (research/FINDINGS.md, paper_ledger.csv); it never calls an API,
+so it needs no keys. The password lives in the Streamlit Cloud app settings
+(Secrets), never in git.
+"""
+import hmac
+import os
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 
-# --- AUTHENTICATION ---
+ROOT = os.path.dirname(os.path.abspath(__file__))
+LEDGER = os.path.join(ROOT, "paper_ledger.csv")
+FINDINGS = os.path.join(ROOT, "research", "FINDINGS.md")
+BREAKEVEN = 110 / 210
+
+
+# ------------------------------------------------------------ access
+
 def check_password():
-    """Returns `True` if the user had the correct password."""
+    expected = st.secrets.get("password") if hasattr(st, "secrets") else None
+    if not expected:
+        # Fail closed: no configured password means nobody gets in.
+        st.title("🔒 Not configured")
+        st.error("No password is set. Add `password = \"...\"` under "
+                 "App settings → Secrets in Streamlit Community Cloud.")
+        return False
 
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if hmac.compare_digest(st.session_state["password"], st.secrets["password"]):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password
-        else:
-            st.session_state["password_correct"] = False
+    def entered():
+        ok = hmac.compare_digest(st.session_state.get("pw", ""), str(expected))
+        st.session_state["authed"] = ok
+        st.session_state.pop("pw", None)
 
-    if st.session_state.get("password_correct", False):
+    if st.session_state.get("authed"):
         return True
-
-    # Show Login Form
-    st.title("🔒 Restricted Access")
-    st.text_input("Enter Password", type="password", on_change=password_entered, key="password")
-    
-    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-        st.error("😕 Password incorrect")
-        
+    st.title("🔒 Restricted access")
+    st.text_input("Password", type="password", on_change=entered, key="pw")
+    if st.session_state.get("authed") is False:
+        st.error("Incorrect password")
     return False
 
-# --- STOP HERE IF NOT AUTHENTICATED ---
-if not check_password():
+
+try:
+    _authed = check_password()
+except Exception:  # st.secrets raises when no secrets file exists at all
+    st.title("🔒 Not configured")
+    st.error("No password is set. Add `password = \"...\"` under "
+             "App settings → Secrets in Streamlit Community Cloud.")
+    _authed = False
+if not _authed:
     st.stop()
 
-# ==========================================
-#      🚀 YOUR ORIGINAL APP CODE BELOW
-# ==========================================
 
-st.title("🏈 CFB Quant Engine: Triple Threat Dashboard")
-load_dotenv()
+# ------------------------------------------------------------ data
 
-# --- 1. LOAD DATA ---
-@st.cache_data(ttl=0)
-def load_data():
-    if not os.path.exists("live_predictions.csv"):
+@st.cache_data(ttl=300)
+def load_ledger():
+    if not os.path.exists(LEDGER):
         return pd.DataFrame()
-    
     try:
-        df = pd.read_csv("live_predictions.csv")
+        df = pd.read_csv(LEDGER)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
-    
-    if 'GameID' in df.columns:
-        df['GameID'] = df['GameID'].astype(str).str.replace(r'\.0$', '', regex=True)
-        
-    if 'Manual_HomeScore' not in df.columns:
-        df['Manual_HomeScore'] = pd.NA
-        df['Manual_AwayScore'] = pd.NA
-        
+    if "price_assumed" in df.columns:
+        df["price_assumed"] = df["price_assumed"].astype(str).str.lower().eq("true")
+    else:
+        df["price_assumed"] = True  # pre-flag rows came from CFBD's placeholder
+    for c in ("commence", "logged_at"):
+        if c in df.columns:
+            df[c] = pd.to_datetime(df[c], errors="coerce", utc=True)
     return df
 
-df = load_data()
 
-# --- 2. DIAGNOSTICS ---
-with st.expander("🛠️ Data Diagnostics", expanded=False):
-    st.write(f"Rows: {len(df)}")
-    if not df.empty: st.dataframe(df.head())
+def summarise(g):
+    w = int((g["result"] == "WIN").sum())
+    l = int((g["result"] == "LOSS").sum())
+    p = int((g["result"] == "PUSH").sum())
+    n = w + l
+    rate = w / n if n else np.nan
+    se = np.sqrt(BREAKEVEN * (1 - BREAKEVEN) / n) if n else np.nan
+    clv = g["clv_points"].dropna() if "clv_points" in g else pd.Series(dtype=float)
+    return {
+        "logged": len(g),
+        "graded": w + l + p,
+        "record": f"{w}-{l}-{p}",
+        "win %": f"{rate*100:.1f}%" if n else "—",
+        "±1 SD": f"{se*100:.1f} pts" if n else "—",
+        "units": f"{g['profit_units'].sum():+.2f}" if n else "—",
+        "mean CLV": f"{clv.mean():+.2f} pts" if len(clv) else "—",
+        "beat close": f"{(clv > 0).mean()*100:.0f}%" if len(clv) else "—",
+    }
 
-# --- 3. MAIN DISPLAY ---
-if df.empty:
-    st.warning("⚠️ Waiting for data... (CSV is empty)")
-    st.stop()
 
-if 'StartDate' in df.columns:
-    df = df.sort_values(by='StartDate', ascending=True)
+# ------------------------------------------------------------ page
 
-# --- 4. PRE-CALCULATE GRADES ---
-graded_rows = []
+st.title("🏈 CFB Quant Engine")
+st.warning(
+    "**No proven edge.** The 2026 season is paper-traded only — **$0 at risk.** "
+    "The 58.7% ATS this dashboard showed in 2025 was produced by a data leak; "
+    "the honest figure was 50.7%."
+)
 
-for _, row in df.iterrows():
-    if pd.notna(row['Manual_HomeScore']):
-        h_score = float(row['Manual_HomeScore'])
-        a_score = float(row['Manual_AwayScore'])
-        winner = row['HomeTeam'] if h_score > a_score else row['AwayTeam']
-        
-        # SU
-        su_pick = row.get('Moneyline Pick')
-        su_res = "WIN" if su_pick == winner else "LOSS"
-        
-        # Spread
-        spread_res = "PUSH"
-        if pd.notna(row.get('Pick_Line')):
-            pick_team = row.get('Pick_Team')
-            line = float(row.get('Pick_Line', 0))
-            if pick_team == row['HomeTeam']: margin = (h_score - a_score) + line
-            else: margin = (a_score - h_score) + line
-            if margin > 0: spread_res = "WIN"
-            elif margin < 0: spread_res = "LOSS"
-            
-        # Total
-        total_res = "PUSH"
-        if pd.notna(row.get('Pick_Total')):
-            actual_total = h_score + a_score
-            target = float(row.get('Pick_Total', 0))
-            side = row.get('Pick_Side')
-            if side == 'OVER': total_res = "WIN" if actual_total > target else "LOSS"
-            elif side == 'UNDER': total_res = "WIN" if actual_total < target else "LOSS"
-            if actual_total == target: total_res = "PUSH"
+df = load_ledger()
+tab_ledger, tab_findings, tab_about = st.tabs(["Paper ledger", "Findings", "How to read this"])
 
-        new_row = row.copy()
-        new_row['Res (SU)'] = su_res
-        new_row['Res (Spr)'] = spread_res
-        new_row['Res (Tot)'] = total_res
-        new_row['Pick (SU)'] = su_pick
-        new_row['Pick (Spr)'] = row.get('Spread Pick')
-        new_row['Pick (Tot)'] = row.get('Total Pick')
-        new_row['Date'] = str(row.get('StartDate'))[:10]
-        new_row['Game'] = f"{row['AwayTeam']} {int(a_score)} - {int(h_score)} {row['HomeTeam']}"
-        
-        graded_rows.append(new_row)
-
-if graded_rows:
-    graded_df = pd.DataFrame(graded_rows)
-else:
-    graded_df = pd.DataFrame()
-
-upcoming_df = df[df['Manual_HomeScore'].isna()].copy()
-
-t1, t2, t3 = st.tabs(["🔮 Forecast Board", "📜 Performance History", "💰 Bankroll Simulator"])
-
-def color_conf(val):
-    try:
-        s = float(str(val).strip('%'))
-        if s >= 60: return 'background-color: #1b5e20; color: white'
-        if s >= 55: return 'background-color: #4caf50; color: black'
-    except: pass
-    return ''
-
-def color_result_cell(val):
-    if val == 'WIN': return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold'
-    if val == 'LOSS': return 'background-color: #ffcdd2; color: #b71c1c; font-weight: bold'
-    if val == 'PUSH': return 'background-color: #e0e0e0; color: #424242'
-    return ''
-
-with t1:
-    st.subheader(f"Upcoming Games ({len(upcoming_df)})")
-    if not upcoming_df.empty:
-        cols = ['StartDate', 'Game', 'Moneyline Pick', 'Moneyline Conf', 
-                'Spread Pick', 'Spread Conf', 'Total Pick', 'Total Conf']
-        valid_cols = [c for c in cols if c in upcoming_df.columns]
-        st.dataframe(upcoming_df[valid_cols].style.map(color_conf, subset=[c for c in ['Moneyline Conf', 'Spread Conf', 'Total Conf'] if c in valid_cols]), use_container_width=True, hide_index=True)
+with tab_ledger:
+    if df.empty:
+        st.info("No paper bets logged yet.")
     else:
-        st.info("No upcoming games found.")
+        assumed = df["price_assumed"].sum()
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Bets logged", len(df))
+        c2.metric("Graded", int(df["result"].notna().sum()))
+        c3.metric("Closing line captured", int(df["close_line"].notna().sum()))
+        c4.metric("Assumed prices", f"{int(assumed)} / {len(df)}")
+        if assumed:
+            st.caption(
+                f"⚠️ {int(assumed)} bets were priced from a data source with no odds, so they "
+                "carry an assumed −110. Their ROI is not a real number until a live odds "
+                "feed is connected."
+            )
 
-with t2:
-    if not graded_df.empty:
-        display_df = graded_df.sort_values(by='StartDate', ascending=False)
-        def get_record(df, res_col):
-            if res_col not in df.columns: return "0-0-0", 0.0
-            wins = len(df[df[res_col] == 'WIN'])
-            losses = len(df[df[res_col] == 'LOSS'])
-            pushes = len(df[df[res_col] == 'PUSH'])
-            total = wins + losses
-            pct = (wins / total * 100) if total > 0 else 0.0
-            return f"{wins}-{losses}-{pushes}", pct
+        st.subheader("By strategy")
+        rows = []
+        for strat, g in df.groupby("strategy"):
+            rows.append({"strategy": strat, **summarise(g)})
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.caption(
+            "Break-even at −110 is 52.38%. With under ~150 bets, ±1 SD is 4+ points, so "
+            "win rate is mostly noise. Closing line value (CLV) is the early signal."
+        )
 
-        rec_su, pct_su = get_record(display_df, 'Res (SU)')
-        rec_spr, pct_spr = get_record(display_df, 'Res (Spr)')
-        rec_tot, pct_tot = get_record(display_df, 'Res (Tot)')
+        if "middle_id" in df.columns and df["middle_id"].notna().any():
+            st.subheader("Total middles")
+            m = df[df["middle_id"].notna()]
+            pairs = [g for _, g in m.groupby("middle_id") if len(g) == 2]
+            done = [g for g in pairs if g["result"].notna().all()]
+            hit = sum(1 for g in done if (g["result"] == "WIN").all())
+            a, b, c = st.columns(3)
+            a.metric("Middles logged", len(pairs))
+            b.metric("Hit both legs", f"{hit} / {len(done)}" if done else "—")
+            c.metric("P&L", f"{sum(g['profit_units'].sum() for g in done):+.2f}u" if done else "—")
+            st.caption("Historical 2019–25: 9.2% hit rate, +8.6% per middle.")
 
-        st.markdown("### 📊 Performance Report")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("🏆 Straight Up", rec_su, f"{pct_su:.1f}%")
-        m2.metric("⚖️ Spread", rec_spr, f"{pct_spr:.1f}%")
-        m3.metric("↕️ Total", rec_tot, f"{pct_tot:.1f}%")
-        st.divider()
-        hist_cols = ['Date', 'Game', 'Pick (SU)', 'Res (SU)', 'Pick (Spr)', 'Res (Spr)', 'Pick (Tot)', 'Res (Tot)']
-        valid_hist_cols = [c for c in hist_cols if c in display_df.columns]
-        st.dataframe(display_df[valid_hist_cols].style.map(color_result_cell, subset=[c for c in ['Res (SU)', 'Res (Spr)', 'Res (Tot)'] if c in valid_hist_cols]), use_container_width=True, hide_index=True)
+        st.subheader("All bets")
+        show = df.sort_values("commence", ascending=False)
+        cols = [c for c in ["commence", "week", "game", "strategy", "market", "side",
+                            "line_taken", "price_taken", "book", "price_assumed",
+                            "close_line", "clv_points", "result", "profit_units", "note"]
+                if c in show.columns]
+        st.dataframe(show[cols], hide_index=True, width="stretch")
+
+        if df["logged_at"].notna().any():
+            st.caption(f"Last logged: {df['logged_at'].max():%Y-%m-%d %H:%M} UTC")
+
+with tab_findings:
+    if os.path.exists(FINDINGS):
+        st.markdown(open(FINDINGS).read())
     else:
-        st.info("No graded games yet.")
+        st.info("research/FINDINGS.md not found.")
 
-with t3:
-    if not graded_df.empty:
-        st.markdown("### 📈 Bankroll Simulator (Spread & Total Only)")
-        wager = st.number_input("Enter Bet Amount ($)", min_value=10, value=100, step=10)
-        st.caption(f"Simulation: ${wager} per game. Assumes standard -110 odds for Spread and Total.")
-        
-        sim_df = graded_df.sort_values(by='StartDate', ascending=True).copy()
-        
-        # PROFIT CALCULATOR (Spread & Total Only)
-        def calc_pnl(row, pick_type):
-            res_col = f"Res ({pick_type})"
-            res = row.get(res_col)
-            
-            if res == 'LOSS': return -float(wager)
-            if res == 'PUSH': return 0.0
-            if res == 'WIN': return wager * (100/110) # Standard -110 odds
-            return 0.0
+with tab_about:
+    st.markdown(
+        """
+**What this is.** A research project testing whether college football betting
+markets can be beaten with public data. After two rounds of exhaustive testing
+the answer so far is *no* — the market prices team quality better than any model
+built here. Three narrow candidates are tracked in a paper ledger to gather
+evidence without risking money.
 
-        sim_df['Profit_Spread'] = sim_df.apply(lambda r: calc_pnl(r, 'Spr'), axis=1)
-        sim_df['Profit_Total'] = sim_df.apply(lambda r: calc_pnl(r, 'Tot'), axis=1)
+**The weekly loop** (run locally, then commit the ledger):
 
-        sim_df['Bankroll_Spread'] = sim_df['Profit_Spread'].cumsum()
-        sim_df['Bankroll_Total'] = sim_df['Profit_Total'].cumsum()
-        
-        # Plot (Only Spread and Total)
-        st.line_chart(sim_df[['Date', 'Bankroll_Spread', 'Bankroll_Total']].set_index('Date'))
-        
-        # Metrics (2 Columns instead of 3)
-        b1, b2 = st.columns(2)
-        b1.metric("Spread Net Profit", f"${sim_df['Profit_Spread'].sum():,.2f}")
-        b2.metric("Total Net Profit", f"${sim_df['Profit_Total'].sum():,.2f}")
-        
-    else:
-        st.info("No history available.")
+```
+python -m wf.paper log   2026 <week>   # Tue: record the best available number
+python -m wf.paper close 2026 <week>   # Sat, before kickoff: capture the closing line
+python -m wf.paper grade 2026          # Sun: settle results
+```
+
+**Reading the ledger.**
+- *CLV (closing line value)* — how many points better than the final line you
+  got. Consistently positive CLV is the precondition for long-run profit and
+  shows up in weeks, not seasons.
+- *Win %* — needs hundreds of bets to mean anything. Treat it as noise this year.
+- *Assumed prices* — the free data source has no odds, so those bets use a
+  placeholder −110 and their ROI is not real.
+"""
+    )
