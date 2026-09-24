@@ -143,7 +143,7 @@ def season_table(tg, teams, games):
     from . import ratings
     from . import priors
     season = int(pd.to_datetime(tg["commence"]).dt.year.mode()[0])
-    pri = priors.build(season, teams)
+    pri = priors.load_or_build(season, teams)
     rt, prm = ratings.fit(tg, games, fbs_ids=set(teams["team_id"]), prior=pri)
     prm["prior_teams"] = len(pri)
     a, b, r = ratings.points_map(tg)
@@ -184,7 +184,7 @@ def build(season=None, first_week=1, last_week=None, verbose=True):
         print(f"   {season}: {len(teams)} FBS teams, weeks {first_week}-{last_week}")
 
     from wf.espn import lines_from_odds, parse_event   # flat rows incl. lines
-    games, team_rows = [], []
+    games, team_rows, play_rows = [], [], []
     for wk in range(first_week, last_week + 1):
         sb = source.scoreboard(season, wk)
         n_done = 0
@@ -201,9 +201,13 @@ def build(season=None, first_week=1, last_week=None, verbose=True):
                 pc = (s.get("pickcenter") or [None])[0]
                 if pc and row.get("spread") is None:   # scoreboard drops odds once final
                     row.update({k: v for k, v in lines_from_odds(pc).items() if v is not None})
-                for r in metrics.game_rows(s):
+                plog = []
+                for r in metrics.game_rows(s, play_log=plog):
                     r.update({"week": wk, "commence": row["commence"], "opp_fbs": r["opp_id"] in fbs_ids})
                     team_rows.append(r)
+                for x in plog:
+                    x.update({"event_id": row["event_id"], "week": wk})
+                play_rows.extend(plog)
                 n_done += 1
         if verbose:
             print(f"     week {wk}: {len(sb.get('events', []))} games, {n_done} final")
@@ -214,6 +218,19 @@ def build(season=None, first_week=1, last_week=None, verbose=True):
 
     out = os.path.join(ROOT, "site_data", str(season))
     os.makedirs(out, exist_ok=True)
+
+    # player tables (only athletes resolved to an ESPN id; team-run text like
+    # "ULM rush" is skipped)
+    from . import players as pl
+    pdf = pd.DataFrame(play_rows)
+    pdf = pdf[pdf["actor_id"].astype(str).str.match(r"^\d+$") | pdf["target_id"].astype(str).str.match(r"^\d+$")]
+    for c in ("actor_id", "target_id"):
+        pdf.loc[~pdf[c].astype(str).str.match(r"^\d+$"), c] = None
+    gp = tg.groupby("team_id").size().to_dict() if len(tg) else {}
+    ptabs = pl.aggregate(pdf, teams, gp)
+    for k, v in ptabs.items():
+        v.to_parquet(os.path.join(out, f"players_{k}.parquet"), index=False)
+
     teams.to_parquet(os.path.join(out, "teams.parquet"), index=False)
     games.to_parquet(os.path.join(out, "games.parquet"), index=False)
     tg.to_parquet(os.path.join(out, "team_games.parquet"), index=False)

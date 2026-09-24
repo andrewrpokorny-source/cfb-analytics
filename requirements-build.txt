@@ -1,0 +1,9 @@
+# Minimal deps for the keyless stats refresh (cfbsite.build). Pinned to match
+# the versions the EP model (cfbsite/ep_model.joblib) was trained/pickled with.
+numpy==2.3.5
+pandas==2.3.3
+pyarrow==22.0.0
+requests==2.32.5
+scikit-learn==1.8.0
+scipy==1.16.3
+joblib==1.5.2

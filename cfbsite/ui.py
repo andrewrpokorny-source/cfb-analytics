@@ -57,9 +57,11 @@ def snapshot(season=None):
     rd = lambda n: pd.read_parquet(os.path.join(d, n))
     with open(os.path.join(d, "meta.json")) as f:
         meta = json.load(f)
+    players = {k: rd(f"players_{k}.parquet") for k in ("passing", "rushing", "receiving")
+               if os.path.exists(os.path.join(d, f"players_{k}.parquet"))}
     return {"season": season, "meta": meta, "teams": rd("teams.parquet"),
             "games": rd("games.parquet"), "team_games": rd("team_games.parquet"),
-            "season_stats": rd("team_season.parquet")}
+            "season_stats": rd("team_season.parquet"), "players": players}
 
 
 @st.cache_data(ttl=600, show_spinner="Loading this week from ESPN...")
@@ -253,3 +255,43 @@ def efficiency_map(ss, highlight=None, conf=None):
     fig.update_yaxes(title="Adjusted defense (EPA/play allowed) →  better", gridcolor=GRID,
                      zeroline=False, autorange="reversed", tickformat="+.2f")
     return _layout(fig, 560)
+
+
+# ------------------------------------------------------------ players
+
+PLAYER_VIEWS = {
+    "passing": {"vol": "dropbacks", "label": "Quarterbacks", "min_pg": 12,
+                "cols": [("dropbacks", "Dropbacks", "%d"), ("epa_per", "EPA/dropback", "%+.3f"),
+                         ("epa", "Total EPA", "%+.1f"), ("success", "Success", "pct"),
+                         ("comp_pct", "Comp %", "pct"), ("ypa", "Yds/att", "%.1f"),
+                         ("td", "TD", "%d"), ("ints", "INT", "%d"), ("sacks", "Sacks", "%d")]},
+    "rushing": {"vol": "carries", "label": "Rushers", "min_pg": 6,
+                "cols": [("carries", "Carries", "%d"), ("epa_per", "EPA/carry", "%+.3f"),
+                         ("epa", "Total EPA", "%+.1f"), ("success", "Success", "pct"),
+                         ("ypc", "Yds/carry", "%.2f"), ("yds", "Yards", "%d"),
+                         ("explosive", "12+ yd runs", "%d"), ("td", "TD", "%d")]},
+    "receiving": {"vol": "targets", "label": "Receivers", "min_pg": 3,
+                  "cols": [("targets", "Targets", "%d"), ("epa_per", "EPA/target", "%+.3f"),
+                           ("epa", "Total EPA", "%+.1f"), ("success", "Success", "pct"),
+                           ("rec", "Rec", "%d"), ("catch_pct", "Catch %", "pct"),
+                           ("yds", "Yards", "%d"), ("ypt", "Yds/target", "%.1f"), ("td", "TD", "%d")]},
+}
+
+
+def player_table(df, kind, sort_by="epa", team=True):
+    """Display frame + column_config for a player table."""
+    v = PLAYER_VIEWS[kind]
+    d = df.sort_values(sort_by, ascending=False).copy()
+    out = pd.DataFrame({"Player": d["player"].values})
+    if team:
+        out.insert(0, "Logo", d["logo"].values)
+        out["Team"] = d["team"].values
+    cfg = {"Logo": st.column_config.ImageColumn("", width="small")}
+    for c, lab, f in v["cols"]:
+        if f == "pct":
+            out[lab] = (d[c] * 100).round(1).values
+            cfg[lab] = st.column_config.NumberColumn(lab, format="%.1f%%")
+        else:
+            out[lab] = d[c].values
+            cfg[lab] = st.column_config.NumberColumn(lab, format=f)
+    return out, cfg

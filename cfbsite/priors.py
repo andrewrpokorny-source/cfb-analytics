@@ -18,8 +18,31 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COEF = {"o_prev": 0.381, "o_tal": 0.017, "d_prev": 0.394, "d_tal": -0.016}
 
 
+def _key(endpoint, params):
+    """Same cache key as wf.cache._key, without importing wf.config (which
+    requires a CFBD key and would crash the keyless GitHub Actions refresh)."""
+    import hashlib
+    blob = endpoint + "|" + json.dumps(params, sort_keys=True)
+    return endpoint.strip("/").replace("/", "_") + "_" + hashlib.md5(blob.encode()).hexdigest()[:12]
+
+
+def load_or_build(season, teams):
+    """Priors are fixed for a season, so compute once (needs the local CFBD
+    cache) and store them in site_data/<season>/priors.json, which is committed.
+    The automated refresh then reads the file and never needs CFBD."""
+    path = os.path.join(ROOT, "site_data", str(season), "priors.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            return {k: tuple(v) for k, v in json.load(f).items()}
+    pri = build(season, teams)
+    if pri:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({k: list(v) for k, v in pri.items()}, f)
+    return pri
+
+
 def _cfbd(endpoint, params):
-    from wf.cache import _key   # key only; never triggers a network call
     p = os.path.join(ROOT, "data_cache", _key(endpoint, params) + ".json")
     if os.path.exists(p):
         with open(p) as f:

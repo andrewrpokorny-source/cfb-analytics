@@ -81,7 +81,7 @@ def _half_secs(period, clock):
     return secs + (900 if period in (1, 3) else 0)
 
 
-def game_rows(summary):
+def game_rows(summary, play_log=None):
     """Two dicts (home, away) of raw counts for one completed game, or []."""
     hdr = summary.get("header", {}).get("competitions", [{}])[0]
     comps = {c["homeAway"]: c for c in hdr.get("competitors", [])}
@@ -207,7 +207,9 @@ def game_rows(summary):
                 else:
                     after = None
                 if down and ytg is not None and after is not None:
-                    ep_rows.append((oside, kind, s, down, before, after))
+                    ep_rows.append((oside, kind, s, down, before, after,
+                                    {"yds": yds, "td": td, "to": to, "ptype": ptype,
+                                     "text": p.get("text", ""), "week_down": down}))
                 o[kind] += 1
                 o[f"{kind}_yds"] += yds
                 if ptype == "Sack":
@@ -231,7 +233,11 @@ def game_rows(summary):
                       [x[3] for x in states])
         n = len(ep_rows)
         before_ep, after_iter = vals[:n], iter(vals[n:])
-        for (side_, kind, succ, down, _, after), b in zip(ep_rows, before_ep):
+        ros = None
+        if play_log is not None:
+            from . import players as pl
+            ros = pl.roster(summary)
+        for (side_, kind, succ, down, _, after, extra), b in zip(ep_rows, before_ep):
             if after[0] == "pts":
                 a_ep = after[1]
             else:
@@ -247,6 +253,26 @@ def game_rows(summary):
                 o["early_n"] += 1
             if succ:
                 o["succ_epa"] += e
+            if play_log is not None:
+                parsed = pl.parse(extra["text"])
+                tid = ids[side_]
+                a_id = a_nm = t_id = t_nm = None
+                verb = None
+                if parsed:
+                    aj, an, verb, tj, tn = parsed
+                    a_id, a_nm = pl.resolve(ros, tid, aj, an, role=verb)
+                    if tn:
+                        t_id, t_nm = pl.resolve(ros, tid, tj, tn, role="target")
+                interception = extra["to"] and kind == "pass" and extra["ptype"] != "Sack"
+                complete = (kind == "pass" and not interception and verb == "pass"
+                            and "incomplete" not in extra["text"].lower() and extra["ptype"] != "Sack")
+                play_log.append({
+                    "team_id": tid, "kind": kind, "epa": e, "success": bool(succ),
+                    "yds": extra["yds"], "td": bool(extra["td"]), "turnover": bool(extra["to"]),
+                    "interception": bool(interception), "complete": bool(complete),
+                    "pass_yds": extra["yds"] if complete else 0.0,
+                    "verb": verb, "actor_id": a_id, "actor": a_nm, "target_id": t_id, "target": t_nm,
+                })
 
     # Box-score extras (penalties, possession) — whole game, no garbage filter
     box = {}

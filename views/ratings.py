@@ -3,7 +3,7 @@ import streamlit as st
 
 from cfbsite import ui
 
-snap = ui.snapshot()
+snap = ui.snapshot(st.session_state.get("season"))
 if snap is None:
     st.error("Stats snapshot missing — run `python -m cfbsite.build`.")
     st.stop()

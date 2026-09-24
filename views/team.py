@@ -4,7 +4,7 @@ import streamlit as st
 
 from cfbsite import ui
 
-snap = ui.snapshot()
+snap = ui.snapshot(st.session_state.get("season"))
 if snap is None:
     st.error("Stats snapshot missing — run `python -m cfbsite.build`.")
     st.stop()
@@ -93,6 +93,23 @@ st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 st.caption("Lines are DraftKings closing numbers via ESPN, from this team's side.")
 if upcoming:
     st.page_link("views/matchup.py", label="Preview the next game →", query_params={"game": str(upcoming[0])})
+
+# ---------------------------------------------------------------- players
+pls = snap.get("players", {})
+if pls:
+    st.subheader("Players")
+    ptabs = st.tabs([v["label"] for v in ui.PLAYER_VIEWS.values()])
+    for tab, (kind, v) in zip(ptabs, ui.PLAYER_VIEWS.items()):
+        with tab:
+            d = pls.get(kind)
+            d = d[d["team_id"] == tid] if d is not None else None
+            if d is None or d.empty:
+                st.caption("No data.")
+                continue
+            d = d[d[v["vol"]] >= max(1, d[v["vol"]].max() * 0.1)].head(8)
+            tbl, cfg = ui.player_table(d, kind, sort_by=v["vol"], team=False)
+            st.dataframe(tbl, hide_index=True, width="stretch", column_config=cfg)
+    st.caption("EPA from play-by-play, garbage time excluded. Full leaderboards on the Player leaders page.")
 
 # ---------------------------------------------------------------- game log
 st.subheader("Game by game")
