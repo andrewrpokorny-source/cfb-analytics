@@ -69,7 +69,8 @@ for _, r in g.iterrows():
     opp = r["away"] if home else r["home"]
     opp_id = r["away_id"] if home else r["home_id"]
     ko = pd.to_datetime(r["commence"], utc=True).tz_convert("America/New_York")
-    my_line = r["spread"] if home else (-r["spread"] if pd.notna(r["spread"]) else np.nan)
+    sp = r.get("spread", np.nan)
+    my_line = sp if home else (-sp if pd.notna(sp) else np.nan)
     res = ats = ou = ""
     if r["completed"]:
         me, them = (r["home_score"], r["away_score"]) if home else (r["away_score"], r["home_score"])

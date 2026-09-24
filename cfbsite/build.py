@@ -213,6 +213,26 @@ def build(season=None, first_week=1, last_week=None, verbose=True):
             print(f"     week {wk}: {len(sb.get('events', []))} games, {n_done} final")
 
     games = pd.DataFrame(games)
+    for c in ("spread", "total"):
+        if c not in games.columns:
+            games[c] = np.nan
+    # past seasons: ESPN no longer carries their odds; backfill from CFBD cache
+    if season != cur_season:
+        from . import pastlines
+        pl_map = pastlines.load(season)
+        if pl_map:
+            from wf.espn import normalise
+            n = 0
+            for i, r in games.iterrows():
+                hit = pl_map.get((normalise(r["home"]), normalise(r["away"])))
+                if hit is None:
+                    continue
+                if pd.isna(r.get("spread")) and hit[0] is not None:
+                    games.at[i, "spread"] = hit[0]; n += 1
+                if pd.isna(r.get("total")) and hit[1] is not None:
+                    games.at[i, "total"] = hit[1]
+            if verbose:
+                print(f"   backfilled {n} closing spreads from the CFBD cache")
     tg = pd.DataFrame(team_rows)
     ts, prm = season_table(tg, teams, games) if len(tg) else (pd.DataFrame(), {})
 
