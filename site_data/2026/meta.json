@@ -4,150 +4,338 @@
   1,
   4
  ],
- "built_at": "2026-09-24T02:03:51+00:00",
+ "built_at": "2026-09-24T02:32:52+00:00",
  "fbs_teams": 138,
  "games": 331,
  "final_games": 260,
  "stats": {
+  "power": {
+   "label": "Power rating (pts vs avg team)",
+   "higher_better": true,
+   "fmt": "+1f",
+   "cat": "Ratings"
+  },
+  "adj_off": {
+   "label": "Adj. offense (EPA/play)",
+   "higher_better": true,
+   "fmt": "+3f",
+   "cat": "Ratings"
+  },
+  "adj_def": {
+   "label": "Adj. defense (EPA/play allowed)",
+   "higher_better": false,
+   "fmt": "+3f",
+   "cat": "Ratings"
+  },
+  "sos": {
+   "label": "Strength of schedule (avg opp. power)",
+   "higher_better": true,
+   "fmt": "+1f",
+   "cat": "Ratings"
+  },
   "win_pct": {
    "label": "Win %",
    "higher_better": true,
-   "fmt": "pct"
+   "fmt": "pct",
+   "cat": "Results"
   },
   "ppg": {
    "label": "Points per game",
    "higher_better": true,
-   "fmt": "1f"
+   "fmt": "1f",
+   "cat": "Results"
   },
   "opp_ppg": {
    "label": "Points allowed per game",
    "higher_better": false,
-   "fmt": "1f"
+   "fmt": "1f",
+   "cat": "Results"
   },
   "margin_pg": {
    "label": "Scoring margin",
    "higher_better": true,
-   "fmt": "+1f"
-  },
-  "o_ypp": {
-   "label": "Yards per play",
-   "higher_better": true,
-   "fmt": "2f"
-  },
-  "o_sr": {
-   "label": "Success rate",
-   "higher_better": true,
-   "fmt": "pct"
-  },
-  "o_expl": {
-   "label": "Explosive play rate (20+ yds)",
-   "higher_better": true,
-   "fmt": "pct"
-  },
-  "o_ppd": {
-   "label": "Points per drive",
-   "higher_better": true,
-   "fmt": "2f"
-  },
-  "o_rush_ypc": {
-   "label": "Yards per rush",
-   "higher_better": true,
-   "fmt": "2f"
-  },
-  "o_pass_ypd": {
-   "label": "Yards per dropback",
-   "higher_better": true,
-   "fmt": "2f"
-  },
-  "o_rush_rate": {
-   "label": "Run rate",
-   "higher_better": null,
-   "fmt": "pct"
-  },
-  "o_third": {
-   "label": "3rd-down conversion",
-   "higher_better": true,
-   "fmt": "pct"
-  },
-  "o_rz_td": {
-   "label": "Red-zone TD rate",
-   "higher_better": true,
-   "fmt": "pct"
-  },
-  "o_havoc_allowed": {
-   "label": "Havoc allowed",
-   "higher_better": false,
-   "fmt": "pct"
-  },
-  "o_plays_pg": {
-   "label": "Plays per game",
-   "higher_better": null,
-   "fmt": "1f"
-  },
-  "d_ypp": {
-   "label": "Yards per play allowed",
-   "higher_better": false,
-   "fmt": "2f"
-  },
-  "d_sr": {
-   "label": "Success rate allowed",
-   "higher_better": false,
-   "fmt": "pct"
-  },
-  "d_expl": {
-   "label": "Explosive plays allowed",
-   "higher_better": false,
-   "fmt": "pct"
-  },
-  "d_ppd": {
-   "label": "Points per drive allowed",
-   "higher_better": false,
-   "fmt": "2f"
-  },
-  "d_rush_ypc": {
-   "label": "Yards per rush allowed",
-   "higher_better": false,
-   "fmt": "2f"
-  },
-  "d_pass_ypd": {
-   "label": "Yards per dropback allowed",
-   "higher_better": false,
-   "fmt": "2f"
-  },
-  "d_third": {
-   "label": "3rd-down conversion allowed",
-   "higher_better": false,
-   "fmt": "pct"
-  },
-  "d_rz_td": {
-   "label": "Red-zone TD rate allowed",
-   "higher_better": false,
-   "fmt": "pct"
-  },
-  "d_havoc": {
-   "label": "Havoc rate (defense)",
-   "higher_better": true,
-   "fmt": "pct"
+   "fmt": "+1f",
+   "cat": "Results"
   },
   "to_margin_pg": {
    "label": "Turnover margin per game",
    "higher_better": true,
-   "fmt": "+2f"
+   "fmt": "+2f",
+   "cat": "Results"
   },
   "penalty_yds_pg": {
    "label": "Penalty yards per game",
    "higher_better": false,
-   "fmt": "1f"
+   "fmt": "1f",
+   "cat": "Results"
+  },
+  "o_epa": {
+   "label": "EPA per play",
+   "higher_better": true,
+   "fmt": "+3f",
+   "cat": "Offense"
+  },
+  "o_rush_epa": {
+   "label": "EPA per rush",
+   "higher_better": true,
+   "fmt": "+3f",
+   "cat": "Offense"
+  },
+  "o_pass_epa": {
+   "label": "EPA per dropback",
+   "higher_better": true,
+   "fmt": "+3f",
+   "cat": "Offense"
+  },
+  "o_early_epa": {
+   "label": "Early-down EPA (1st & 2nd)",
+   "higher_better": true,
+   "fmt": "+3f",
+   "cat": "Offense"
+  },
+  "o_sr": {
+   "label": "Success rate",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_sd_sr": {
+   "label": "Standard-downs success rate",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_pd_sr": {
+   "label": "Passing-downs success rate",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_isoppp": {
+   "label": "Explosiveness (EPA per successful play)",
+   "higher_better": true,
+   "fmt": "2f",
+   "cat": "Offense"
+  },
+  "o_expl": {
+   "label": "Explosive play rate (20+ yds)",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_ypp": {
+   "label": "Yards per play",
+   "higher_better": true,
+   "fmt": "2f",
+   "cat": "Offense"
+  },
+  "o_rush_ypc": {
+   "label": "Yards per rush",
+   "higher_better": true,
+   "fmt": "2f",
+   "cat": "Offense"
+  },
+  "o_pass_ypd": {
+   "label": "Yards per dropback",
+   "higher_better": true,
+   "fmt": "2f",
+   "cat": "Offense"
+  },
+  "o_stuff": {
+   "label": "Stuff rate (runs for <= 0)",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_third": {
+   "label": "3rd-down conversion",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_havoc_allowed": {
+   "label": "Havoc allowed",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Offense"
+  },
+  "o_ppd": {
+   "label": "Points per drive",
+   "higher_better": true,
+   "fmt": "2f",
+   "cat": "Drives"
+  },
+  "o_pts_opp": {
+   "label": "Points per scoring opportunity",
+   "higher_better": true,
+   "fmt": "2f",
+   "cat": "Drives"
+  },
+  "o_rz_td": {
+   "label": "Red-zone TD rate",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Drives"
+  },
+  "o_start": {
+   "label": "Avg. starting field position (yds to go)",
+   "higher_better": false,
+   "fmt": "1f",
+   "cat": "Drives"
+  },
+  "d_ppd": {
+   "label": "Points per drive allowed",
+   "higher_better": false,
+   "fmt": "2f",
+   "cat": "Drives"
+  },
+  "d_pts_opp": {
+   "label": "Points per opportunity allowed",
+   "higher_better": false,
+   "fmt": "2f",
+   "cat": "Drives"
+  },
+  "d_rz_td": {
+   "label": "Red-zone TD rate allowed",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Drives"
+  },
+  "d_start": {
+   "label": "Opp. starting field position (yds to go)",
+   "higher_better": true,
+   "fmt": "1f",
+   "cat": "Drives"
+  },
+  "d_epa": {
+   "label": "EPA per play allowed",
+   "higher_better": false,
+   "fmt": "+3f",
+   "cat": "Defense"
+  },
+  "d_rush_epa": {
+   "label": "EPA per rush allowed",
+   "higher_better": false,
+   "fmt": "+3f",
+   "cat": "Defense"
+  },
+  "d_pass_epa": {
+   "label": "EPA per dropback allowed",
+   "higher_better": false,
+   "fmt": "+3f",
+   "cat": "Defense"
+  },
+  "d_early_epa": {
+   "label": "Early-down EPA allowed",
+   "higher_better": false,
+   "fmt": "+3f",
+   "cat": "Defense"
+  },
+  "d_sr": {
+   "label": "Success rate allowed",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "d_sd_sr": {
+   "label": "Standard-downs success allowed",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "d_pd_sr": {
+   "label": "Passing-downs success allowed",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "d_isoppp": {
+   "label": "Explosiveness allowed",
+   "higher_better": false,
+   "fmt": "2f",
+   "cat": "Defense"
+  },
+  "d_expl": {
+   "label": "Explosive plays allowed (20+)",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "d_ypp": {
+   "label": "Yards per play allowed",
+   "higher_better": false,
+   "fmt": "2f",
+   "cat": "Defense"
+  },
+  "d_rush_ypc": {
+   "label": "Yards per rush allowed",
+   "higher_better": false,
+   "fmt": "2f",
+   "cat": "Defense"
+  },
+  "d_pass_ypd": {
+   "label": "Yards per dropback allowed",
+   "higher_better": false,
+   "fmt": "2f",
+   "cat": "Defense"
+  },
+  "d_stuff": {
+   "label": "Stuff rate (defense)",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "d_third": {
+   "label": "3rd-down conversion allowed",
+   "higher_better": false,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "d_havoc": {
+   "label": "Havoc rate (sacks + TFL + takeaways)",
+   "higher_better": true,
+   "fmt": "pct",
+   "cat": "Defense"
+  },
+  "o_neutral_pass": {
+   "label": "Neutral-situation pass rate",
+   "higher_better": null,
+   "fmt": "pct",
+   "cat": "Style"
+  },
+  "o_rush_rate": {
+   "label": "Run rate (all plays)",
+   "higher_better": null,
+   "fmt": "pct",
+   "cat": "Style"
+  },
+  "o_plays_pg": {
+   "label": "Plays per game",
+   "higher_better": null,
+   "fmt": "1f",
+   "cat": "Style"
   },
   "net_ypp": {
    "label": "Net yards per play",
    "higher_better": true,
-   "fmt": "+2f"
+   "fmt": "+2f",
+   "cat": "Results"
   },
   "net_sr": {
    "label": "Net success rate",
    "higher_better": true,
-   "fmt": "+pct"
+   "fmt": "+pct",
+   "cat": "Results"
   }
+ },
+ "ratings": {
+  "mu": 0.07781568015347819,
+  "hfa": 0.06284690103733905,
+  "alpha": 300,
+  "prior_teams": 136,
+  "pts_a": 23.400206784115127,
+  "pts_b": 47.004586938618736,
+  "pts_r": 0.8336061937667385,
+  "fcs_power": -17.235473576310678
  }
 }

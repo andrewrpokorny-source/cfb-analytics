@@ -15,18 +15,31 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BLUE, ORANGE = "#2a78d6", "#eb6834"      # away / above-average  |  home / below-average
 GRID, MUTED = "rgba(128,128,128,0.18)", "#8a8984"
 
-OFFENSE = ["ppg", "o_ypp", "o_sr", "o_expl", "o_ppd", "o_rush_ypc", "o_pass_ypd",
-           "o_third", "o_rz_td", "o_havoc_allowed"]
-DEFENSE = ["opp_ppg", "d_ypp", "d_sr", "d_expl", "d_ppd", "d_rush_ypc", "d_pass_ypd",
-           "d_third", "d_rz_td", "d_havoc"]
-# offense stat -> the defensive stat it runs into
-MATCH = [("o_ypp", "d_ypp"), ("o_sr", "d_sr"), ("o_expl", "d_expl"), ("o_ppd", "d_ppd"),
-         ("o_rush_ypc", "d_rush_ypc"), ("o_pass_ypd", "d_pass_ypd"), ("o_third", "d_third"),
-         ("o_rz_td", "d_rz_td"), ("o_havoc_allowed", "d_havoc")]
-MATCH_LABEL = {"o_ypp": "Yards per play", "o_sr": "Success rate", "o_expl": "Explosive plays",
-               "o_ppd": "Points per drive", "o_rush_ypc": "Rushing (yds/carry)",
-               "o_pass_ypd": "Passing (yds/dropback)", "o_third": "3rd downs",
-               "o_rz_td": "Red-zone TDs", "o_havoc_allowed": "Havoc (sacks, TFL, turnovers)"}
+# Stat groups shown as percentile profiles on team pages
+PROFILE = {
+    "Offense": ["o_epa", "o_rush_epa", "o_pass_epa", "o_early_epa", "o_sr", "o_sd_sr", "o_pd_sr",
+                "o_isoppp", "o_expl", "o_stuff", "o_third", "o_havoc_allowed"],
+    "Defense": ["d_epa", "d_rush_epa", "d_pass_epa", "d_early_epa", "d_sr", "d_sd_sr", "d_pd_sr",
+                "d_isoppp", "d_expl", "d_stuff", "d_third", "d_havoc"],
+    "Drives & field position": ["o_ppd", "o_pts_opp", "o_rz_td", "o_start",
+                                "d_ppd", "d_pts_opp", "d_rz_td", "d_start"],
+    "Results": ["margin_pg", "ppg", "opp_ppg", "to_margin_pg", "penalty_yds_pg"],
+}
+OFFENSE, DEFENSE = PROFILE["Offense"], PROFILE["Defense"]
+
+# offense stat -> the defensive stat it runs into (unit vs unit)
+MATCH = [("o_epa", "d_epa"), ("o_rush_epa", "d_rush_epa"), ("o_pass_epa", "d_pass_epa"),
+         ("o_early_epa", "d_early_epa"), ("o_sd_sr", "d_sd_sr"), ("o_pd_sr", "d_pd_sr"),
+         ("o_isoppp", "d_isoppp"), ("o_pts_opp", "d_pts_opp"), ("o_stuff", "d_stuff"),
+         ("o_havoc_allowed", "d_havoc"), ("o_third", "d_third")]
+MATCH_LABEL = {"o_epa": "Overall efficiency (EPA/play)", "o_rush_epa": "Running game (EPA/rush)",
+               "o_pass_epa": "Passing game (EPA/dropback)", "o_early_epa": "Early downs (EPA)",
+               "o_sd_sr": "Standard downs (success)", "o_pd_sr": "Passing downs (success)",
+               "o_isoppp": "Big plays (EPA per success)", "o_pts_opp": "Finishing drives (pts/opportunity)",
+               "o_stuff": "Run blocking vs front (stuff rate)",
+               "o_havoc_allowed": "Protection vs havoc", "o_third": "3rd downs"}
+
+SIGMA_MARGIN = 15.4   # sd of actual margin around the line (CFB, 2018-25); for win prob
 
 
 # ------------------------------------------------------------ data
@@ -100,6 +113,12 @@ def stat_cell(row, col, meta):
     v = fmt(row.get(col), m["fmt"])
     r = row.get(f"{col}_rank")
     return f"{v}  ({ordinal(r)})" if r is not None and not pd.isna(r) else v
+
+
+def win_prob(margin):
+    """P(team wins) given a projected margin, normal approx with CFB spread sd."""
+    from math import erf, sqrt
+    return 0.5 * (1 + erf(margin / (SIGMA_MARGIN * sqrt(2))))
 
 
 def rank_label(r):
@@ -183,21 +202,54 @@ def matchup_bars(off_row, def_row, off_name, def_name, off_color, def_color, met
 
 
 def game_log_chart(tg_team, opp_names):
-    """Offensive vs defensive success rate by game."""
+    """Offensive EPA/play vs defensive EPA/play allowed, by game."""
     g = tg_team.sort_values("week")
-    x = [f"Wk {w}<br>{'vs' if h == 'home' else '@'} {opp_names.get(o, '?')}"
+    x = [f"Wk {w}<br>{'vs' if h == 'home' else '@'} {opp_names.get(o, 'FCS opp.')}"
          for w, h, o in zip(g["week"], g["home_away"], g["opp_id"])]
-    osr = g["o_success"] / g["o_succ_n"].where(g["o_succ_n"] > 0)
-    dsr = g["d_success"] / g["d_succ_n"].where(g["d_succ_n"] > 0)
+    oe = g["o_epa"] / g["o_epa_n"].where(g["o_epa_n"] > 0)
+    de = g["d_epa"] / g["d_epa_n"].where(g["d_epa_n"] > 0)
     fig = go.Figure()
-    for name, y, c in (("Offense success rate", osr, BLUE), ("Defense success rate allowed", dsr, ORANGE)):
-        fig.add_scatter(x=x, y=y * 100, name=name, mode="lines+markers",
+    for name, y, c in (("Offense EPA/play", oe, BLUE), ("Defense EPA/play allowed", de, ORANGE)):
+        fig.add_scatter(x=x, y=y, name=name, mode="lines+markers",
                         line=dict(color=c, width=2), marker=dict(size=9, color=c),
-                        hovertemplate="%{x}<br>" + name + ": %{y:.1f}%<extra></extra>")
-    fig.add_hline(y=44, line=dict(color=MUTED, width=1, dash="dot"),
-                  annotation_text="FBS avg ~44%", annotation_position="bottom right")
-    fig.update_yaxes(ticksuffix="%", gridcolor=GRID, title=None, rangemode="tozero")
+                        hovertemplate="%{x}<br>" + name + ": %{y:+.3f}<extra></extra>")
+    fig.add_hline(y=0, line=dict(color=MUTED, width=1, dash="dot"),
+                  annotation_text="average", annotation_position="bottom right")
+    fig.update_yaxes(gridcolor=GRID, title=None, tickformat="+.2f")
     fig.update_xaxes(title=None)
     fig = _layout(fig, 300)
     fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.08, x=0))
     return fig
+
+
+def efficiency_map(ss, highlight=None, conf=None):
+    """Every FBS team by adjusted offense (x) and adjusted defense (y, flipped so
+    up = better). Top-right = good at both. One hue; the highlighted team and an
+    optional conference are drawn in the accent colour, everyone else muted."""
+    d = ss.dropna(subset=["adj_off", "adj_def"]).copy()
+    focus = d["team_id"].eq(highlight) | (d["conference"].eq(conf) if conf else False)
+    fig = go.Figure()
+    for mask, color, size, show in ((~focus, "rgba(138,137,132,0.45)", 8, False), (focus, BLUE, 11, True)):
+        dd = d[mask]
+        fig.add_scatter(
+            x=dd["adj_off"], y=dd["adj_def"], mode="markers+text" if show else "markers",
+            text=dd["team"] if show else None, textposition="top center", textfont=dict(size=11),
+            marker=dict(size=size, color=color, line=dict(width=2, color="rgba(255,255,255,0.9)")),
+            customdata=np.stack([dd["team"], dd["record"], dd["power"], dd["power_rank"]], axis=-1),
+            hovertemplate="<b>%{customdata[0]}</b> (%{customdata[1]})<br>Adj. offense %{x:+.3f}"
+                          "<br>Adj. defense %{y:+.3f}<br>Power %{customdata[2]:+.1f} "
+                          "(#%{customdata[3]})<extra></extra>")
+    mo, md = d["adj_off"].median(), d["adj_def"].median()
+    fig.add_vline(x=mo, line=dict(color=MUTED, width=1, dash="dot"))
+    fig.add_hline(y=md, line=dict(color=MUTED, width=1, dash="dot"))
+    for tx, ty, lab, xa, ya in ((1, 1, "Good offense, good defense", "right", "top"),
+                                (0, 1, "Defense-first", "left", "top"),
+                                (1, 0, "Offense-first", "right", "bottom"),
+                                (0, 0, "Struggling on both sides", "left", "bottom")):
+        fig.add_annotation(xref="paper", yref="paper", x=tx, y=ty, text=lab, showarrow=False,
+                           font=dict(size=11, color=MUTED), xanchor=xa, yanchor=ya)
+    fig.update_xaxes(title="Adjusted offense (EPA/play) →  better", gridcolor=GRID, zeroline=False,
+                     tickformat="+.2f")
+    fig.update_yaxes(title="Adjusted defense (EPA/play allowed) →  better", gridcolor=GRID,
+                     zeroline=False, autorange="reversed", tickformat="+.2f")
+    return _layout(fig, 560)

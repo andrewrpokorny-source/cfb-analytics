@@ -14,6 +14,8 @@ Definitions (standard in college football analytics):
 """
 import re
 
+import numpy as np
+
 RUSH = {"Rush", "Rushing Touchdown"}
 PASS = {"Pass Reception", "Pass Incompletion", "Passing Touchdown", "Sack",
         "Interception", "Pass Interception Return", "Interception Return Touchdown",
@@ -24,6 +26,9 @@ INT_TYPES = {"Interception", "Pass Interception Return", "Interception Return To
              "Pass Interception Return Touchdown"}
 # ESPN's per-play isTurnover flag is unreliable (most interceptions are False,
 # lost fumbles appear as "Fumble Recovery (Own)"). The drive result is reliable.
+DEF_TD_TYPES = {"Interception Return Touchdown", "Fumble Return Touchdown",
+                "Pass Interception Return Touchdown", "Fumble Recovery (Opponent) Touchdown",
+                "Interception Touchdown", "Fumble Touchdown"}
 TO_DRIVE_RESULTS = {"interception", "fumble", "interception return touchdown",
                     "fumble return touchdown", "interception touchdown", "fumble touchdown"}
 
@@ -67,6 +72,15 @@ def _num(x, default=None):
         return default
 
 
+def _half_secs(period, clock):
+    try:
+        mm, ss = str((clock or {}).get("displayValue", "0:00")).split(":")
+        secs = int(mm) * 60 + int(ss)
+    except ValueError:
+        secs = 0
+    return secs + (900 if period in (1, 3) else 0)
+
+
 def game_rows(summary):
     """Two dicts (home, away) of raw counts for one completed game, or []."""
     hdr = summary.get("header", {}).get("competitions", [{}])[0]
@@ -80,70 +94,159 @@ def game_rows(summary):
     blank = lambda: {k: 0.0 for k in (
         "plays", "yards", "success", "succ_n", "explosive", "rush", "rush_yds", "pass",
         "pass_yds", "sacks", "tfl", "turnovers", "third_att", "third_conv",
-        "drives", "drive_pts", "rz_trips", "rz_td", "td", "fg", "plays_all")}
+        "drives", "drive_pts", "rz_trips", "rz_td", "td", "fg", "plays_all",
+        # EPA family (non-garbage scrimmage plays)
+        "epa", "epa_n", "rush_epa", "pass_epa", "early_epa", "early_n",
+        "succ_epa", "sd_n", "sd_succ", "pd_n", "pd_succ", "stuffed",
+        # drive context
+        "start_ytg_sum", "opp_n", "opp_pts",
+        # neutral-situation play calling (|margin| <= 8, Q1-3)
+        "neutral_n", "neutral_pass")}
     off = {"home": blank(), "away": blank()}
 
-    home_sc = away_sc = 0.0
     drives = summary.get("drives", {}).get("previous", [])
+    ep_rows = []   # (side, kind, succ, down, before-state, after-state | points)
+
+    # ---- pass 1: drives (order-independent) ----------------------------------
+    to_plays, flat = set(), []
     for d in drives:
         dteam = str((d.get("team") or {}).get("id", ""))
         dside = side_of.get(dteam)
-        reached_rz = False
-        dres = (d.get("displayResult") or d.get("result") or "").lower()
-        scrim_idx = [i for i, p in enumerate(d.get("plays", [])) if play_kind(p)]
-        to_idx = scrim_idx[-1] if (dres in TO_DRIVE_RESULTS and scrim_idx) else None
-        for i, p in enumerate(d.get("plays", [])):
-            period = (p.get("period") or {}).get("number", 1)
-            start = p.get("start") or {}
-            oside = side_of.get(str((start.get("team") or {}).get("id", "")), dside)
-            margin = abs(home_sc - away_sc)
-            garbage = margin > GARBAGE.get(period, 999)
-            kind = play_kind(p)
-            ytg = start.get("yardsToEndzone")
-            if kind and oside and ytg is not None and ytg <= 20:
-                reached_rz = True
-            if kind and oside:
-                o = off[oside]
-                o["plays_all"] += 1
-                if not garbage:
-                    yds = _num(p.get("statYardage"), 0.0)
-                    td = "Touchdown" in p.get("type", {}).get("text", "") and not p.get("isTurnover")
-                    ptype = p.get("type", {}).get("text", "")
-                    to = (i == to_idx) or ptype in INT_TYPES or ptype == "Fumble Recovery (Opponent)"
-                    down, dist = start.get("down"), _num(start.get("distance"))
-                    o["plays"] += 1
-                    o["yards"] += yds
-                    s = is_success(down, dist, yds, td, to)
-                    if s is not None:
-                        o["succ_n"] += 1
-                        o["success"] += int(s)
-                    o["explosive"] += int(yds >= 20)
-                    o[kind] += 1
-                    o[f"{kind}_yds"] += yds
-                    if p.get("type", {}).get("text") == "Sack":
-                        o["sacks"] += 1
-                    elif kind == "rush" and yds < 0:
-                        o["tfl"] += 1
-                    if down == 3:
-                        o["third_att"] += 1
-                        o["third_conv"] += int(td or (dist is not None and yds >= dist and not to))
-            home_sc = _num(p.get("homeScore"), home_sc)
-            away_sc = _num(p.get("awayScore"), away_sc)
-        if dside:
-            res = (d.get("displayResult") or d.get("result") or "").lower()
-            n_off = d.get("offensivePlays") or 0
-            o = off[dside]
-            o["turnovers"] += int(res in TO_DRIVE_RESULTS)   # whole game, incl. garbage time
-            if res in ("kickoff",) or (("end of" in res) and n_off <= 3):
-                continue
-            o["drives"] += 1
-            pts = 7 if res == "touchdown" else 3 if res == "field goal" else 0
-            o["drive_pts"] += pts
-            o["td"] += int(pts == 7)
-            o["fg"] += int(pts == 3)
-            if reached_rz:
+        plays = d.get("plays", [])
+        scrim = [p for p in plays if play_kind(p)]
+        res = (d.get("displayResult") or d.get("result") or "").lower()
+        if res in TO_DRIVE_RESULTS and scrim:
+            to_plays.add(scrim[-1].get("id"))
+        for p in plays:
+            flat.append((dside, p))
+        if not dside:
+            continue
+        o = off[dside]
+        o["turnovers"] += int(res in TO_DRIVE_RESULTS)   # whole game, incl. garbage time
+        n_off = d.get("offensivePlays") or 0
+        if res in ("kickoff",) or (("end of" in res) and n_off <= 3):
+            continue
+        ytgs = [(pl.get("start") or {}).get("yardsToEndzone") for pl in scrim]
+        ytgs = [y for y in ytgs if y is not None]
+        pts = 7 if res == "touchdown" else 3 if res == "field goal" else 0
+        o["drives"] += 1
+        o["drive_pts"] += pts
+        o["td"] += int(pts == 7)
+        o["fg"] += int(pts == 3)
+        if ytgs:
+            o["start_ytg_sum"] += ytgs[0]
+            if min(ytgs) <= 40:                      # a scoring opportunity
+                o["opp_n"] += 1
+                o["opp_pts"] += pts
+            if min(ytgs) <= 20:
                 o["rz_trips"] += 1
                 o["rz_td"] += int(pts == 7)
+
+    # ---- pass 2: plays in true chronological order -----------------------------
+    # ESPN's drive list is sometimes out of order (overtime drives interleaved
+    # with the 2nd quarter, a score typo of 1,414). Sort by period, then ESPN's
+    # sequence number, and only let the running score move UP by a plausible
+    # amount, so the garbage-time margin is never computed from a glitch.
+    def _seq(item):
+        p = item[1]
+        try:
+            sq = int(p.get("sequenceNumber") or 0)
+        except (TypeError, ValueError):
+            sq = 0
+        return ((p.get("period") or {}).get("number", 1), sq)
+
+    flat.sort(key=_seq)
+    home_sc = away_sc = 0.0
+    for dside, p in flat:
+        period = (p.get("period") or {}).get("number", 1)
+        start = p.get("start") or {}
+        oside = side_of.get(str((start.get("team") or {}).get("id", "")), dside)
+        margin = abs(home_sc - away_sc)
+        garbage = margin > GARBAGE.get(period, 999)
+        kind = play_kind(p)
+        if kind and oside and period <= 4:
+            o = off[oside]
+            o["plays_all"] += 1
+            if not garbage:
+                ptype = p.get("type", {}).get("text", "")
+                yds = _num(p.get("statYardage"), 0.0)
+                def_td = ptype in DEF_TD_TYPES
+                to = (p.get("id") in to_plays) or ptype in INT_TYPES \
+                    or ptype == "Fumble Recovery (Opponent)" or def_td
+                td = "Touchdown" in ptype and not to
+                down, dist = start.get("down"), _num(start.get("distance"))
+                ytg = start.get("yardsToEndzone")
+                o["plays"] += 1
+                o["yards"] += yds
+                s = is_success(down, dist, yds, td, to)
+                if s is not None:
+                    o["succ_n"] += 1
+                    o["success"] += int(s)
+                o["explosive"] += int(yds >= 20)
+                o["stuffed"] += int(kind == "rush" and yds <= 0)
+                # standard vs passing downs (Connelly): 2nd & 8+, 3rd/4th & 5+
+                passing_down = (down == 2 and (dist or 0) >= 8) or (down in (3, 4) and (dist or 0) >= 5)
+                if s is not None:
+                    k = "pd" if passing_down else "sd"
+                    o[f"{k}_n"] += 1
+                    o[f"{k}_succ"] += int(s)
+                if period <= 3 and margin <= 8:
+                    o["neutral_n"] += 1
+                    o["neutral_pass"] += int(kind == "pass")
+                # EPA: scoring decided by play TYPE, never by score deltas
+                end = p.get("end") or {}
+                before = (ytg, down, dist, _half_secs(period, p.get("clock")))
+                if td:
+                    after = ("pts", 7.0)
+                elif def_td:
+                    after = ("pts", -7.0)
+                elif end.get("down") and end.get("yardsToEndzone") is not None:
+                    same = str((end.get("team") or {}).get("id", "")) == ids[oside]
+                    after = ("state", same, (end.get("yardsToEndzone"), end.get("down"),
+                                             _num(end.get("distance"), 10), before[3]))
+                else:
+                    after = None
+                if down and ytg is not None and after is not None:
+                    ep_rows.append((oside, kind, s, down, before, after))
+                o[kind] += 1
+                o[f"{kind}_yds"] += yds
+                if ptype == "Sack":
+                    o["sacks"] += 1
+                elif kind == "rush" and yds < 0:
+                    o["tfl"] += 1
+                if down == 3:
+                    o["third_att"] += 1
+                    o["third_conv"] += int(td or (dist is not None and yds >= dist and not to))
+        # running score: monotone, plausible steps only
+        nh, na = _num(p.get("homeScore"), home_sc), _num(p.get("awayScore"), away_sc)
+        if home_sc <= nh <= home_sc + 9:
+            home_sc = nh
+        if away_sc <= na <= away_sc + 9:
+            away_sc = na
+
+    if ep_rows:
+        from . import ep as epm
+        states = [r[4] for r in ep_rows] + [r[5][2] for r in ep_rows if r[5][0] == "state"]
+        vals = epm.ep([x[0] for x in states], [x[1] for x in states], [x[2] for x in states],
+                      [x[3] for x in states])
+        n = len(ep_rows)
+        before_ep, after_iter = vals[:n], iter(vals[n:])
+        for (side_, kind, succ, down, _, after), b in zip(ep_rows, before_ep):
+            if after[0] == "pts":
+                a_ep = after[1]
+            else:
+                v = next(after_iter)
+                a_ep = v if after[1] else -v
+            e = float(np.clip(a_ep - b, -10, 10))
+            o = off[side_]
+            o["epa"] += e
+            o["epa_n"] += 1
+            o[f"{kind}_epa"] += e
+            if down in (1, 2):
+                o["early_epa"] += e
+                o["early_n"] += 1
+            if succ:
+                o["succ_epa"] += e
 
     # Box-score extras (penalties, possession) — whole game, no garbage filter
     box = {}

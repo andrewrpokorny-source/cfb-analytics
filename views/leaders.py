@@ -11,9 +11,11 @@ meta, ss = snap["meta"], snap["season_stats"]
 ranked = {c: m for c, m in meta["stats"].items() if m["higher_better"] is not None}
 
 st.title("📊 National leaders")
-c1, c2, c3 = st.columns([3, 2, 2])
-stat = c1.selectbox("Stat", list(ranked), format_func=lambda c: ranked[c]["label"],
-                    index=list(ranked).index("net_ypp"))
+c0, c1, c2, c3 = st.columns([2, 3, 2, 2])
+cats = sorted({m.get("cat", "Other") for m in ranked.values()}, key=lambda c: ["Ratings", "Offense", "Defense", "Drives", "Results"].index(c) if c in ["Ratings", "Offense", "Defense", "Drives", "Results"] else 9)
+cat = c0.selectbox("Category", cats)
+opts = [c for c, m in ranked.items() if m.get("cat") == cat]
+stat = c1.selectbox("Stat", opts, format_func=lambda c: ranked[c]["label"])
 confs = ["All FBS"] + sorted(ss["conference"].dropna().unique())
 conf = c2.selectbox("Conference", confs)
 worst = c3.toggle("Show worst first", value=False)

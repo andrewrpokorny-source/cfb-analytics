@@ -97,9 +97,34 @@ if hid not in by_id.index or aid not in by_id.index:
     st.stop()
 h, a = by_id.loc[hid].to_dict(), by_id.loc[aid].to_dict()
 
+# ---------------------------------------------------------------- model projection
+from cfbsite import ratings as rmod
+prm = meta.get("ratings", {})
+if prm and not any(pd.isna(x.get("adj_off_raw")) for x in (h, a)):
+    neutral = bool((s.get("header", {}).get("competitions", [{}])[0]).get("neutralSite"))
+    hp, ap = rmod.project({"adj_off": h["adj_off_raw"], "adj_def": h["adj_def_raw"]},
+                          {"adj_off": a["adj_off_raw"], "adj_def": a["adj_def_raw"]}, prm, neutral=neutral)
+    margin = hp - ap
+    wp_home = ui.win_prob(margin)
+    st.subheader("Model projection")
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Projected score", f"{ab['abbr']} {ap:.0f} – {hb['abbr']} {hp:.0f}")
+    fav_name, fav_by = (hb["name"], margin) if margin >= 0 else (ab["name"], -margin)
+    mkt = None
+    if row_live is not None and pd.notna(row_live.get("spread")):
+        mkt = row_live["spread"]
+    p2.metric("Model line", f"{fav_name} -{fav_by:.1f}",
+              None if mkt is None else f"market: {hb['name'] if mkt < 0 else ab['name']} {-abs(mkt):+g}",
+              delta_color="off")
+    p3.metric("Win probability", f"{hb['abbr']} {wp_home:.0%} / {ab['abbr']} {1 - wp_home:.0%}")
+    st.caption("From opponent-adjusted power ratings (see Power ratings). The betting market is more "
+               "accurate than this model — on completed games it misses by ~11 points vs ~12 — so "
+               "read a big gap as \"the market knows something the stats don't\", not as a pick.")
+
 # ---------------------------------------------------------------- tale of the tape
 st.subheader("Tale of the tape")
-tape = ["record", "ppg", "opp_ppg", "margin_pg", "net_ypp", "net_sr", "o_ppd", "d_ppd", "to_margin_pg", "penalty_yds_pg"]
+tape = ["record", "power", "adj_off", "adj_def", "sos", "o_epa", "d_epa", "o_sr", "d_sr",
+        "o_pts_opp", "d_pts_opp", "margin_pg", "to_margin_pg", "penalty_yds_pg"]
 rows = []
 for c in tape:
     if c == "record":
@@ -150,7 +175,8 @@ for col, tid, nm in ((f1, aid, ab["name"]), (f2, hid, hb["name"])):
             "Wk": g["week"].astype(int),
             "Opponent": [("vs " if ha == "home" else "@ ") + names.get(o, "FCS opp.") for o, ha in zip(g["opp_id"], g["home_away"])],
             "Result": [f"{'W' if w else 'L'} {int(p)}–{int(q)}" for w, p, q in zip(g["win"], g["points"], g["opp_points"])],
-            "Yds/play": (g["o_yards"] / g["o_plays"]).round(2),
+            "Off EPA/play": (g["o_epa"] / g["o_epa_n"]).round(3),
+            "Def EPA/play": (g["d_epa"] / g["d_epa_n"]).round(3),
             "Success": (100 * g["o_success"] / g["o_succ_n"]).round(1).astype(str) + "%",
         }), hide_index=True, width="stretch")
 

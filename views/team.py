@@ -35,25 +35,30 @@ with h2:
     conf = teams.set_index("team_id").loc[tid, "conference"]
     st.caption(f"{conf} · {t['record']} · through {int(t['games'])} games")
 
-k = st.columns(4)
-for col, c in zip(k, ["margin_pg", "net_ypp", "o_ppd", "d_ppd"]):
+k = st.columns(5)
+for col, c in zip(k, ["power", "adj_off", "adj_def", "sos", "margin_pg"]):
     m = meta["stats"][c]
-    col.metric(m["label"], ui.fmt(t.get(c), m["fmt"]), f"{ui.ordinal(t[c + '_rank'])} of {n_teams}",
-               delta_color="off")
+    col.metric(m["label"].split(" (")[0], ui.fmt(t.get(c), m["fmt"]),
+               f"#{int(t[c + '_rank'])} of {n_teams}", delta_color="off")
+st.caption("Power = points better than an average FBS team on a neutral field (opponent-adjusted). "
+           "Adjusted offense/defense are EPA per play after accounting for opponents. "
+           "Full explanation on the Power ratings page.")
 
 # ---------------------------------------------------------------- profile
 st.subheader("Profile vs FBS")
-st.caption("Percentile among all FBS teams: 100 = best, 50 = median (dotted line). "
-           "Blue = better than median, orange = worse. Garbage time excluded.")
-o_col, d_col = st.columns(2)
-with o_col:
-    st.markdown("**Offense**")
-    st.plotly_chart(ui.percentile_bars(t, ui.OFFENSE, meta, n_teams), width="stretch",
-                    config={"displayModeBar": False})
-with d_col:
-    st.markdown("**Defense**")
-    st.plotly_chart(ui.percentile_bars(t, ui.DEFENSE, meta, n_teams), width="stretch",
-                    config={"displayModeBar": False})
+st.caption("Percentile among all FBS teams: 100 = best, 50 = median (dotted). Blue = better than "
+           "median, orange = worse. Hover for exact values. Garbage time excluded.")
+tabs = st.tabs(list(ui.PROFILE))
+for tab, (grp, cols) in zip(tabs, ui.PROFILE.items()):
+    with tab:
+        st.plotly_chart(ui.percentile_bars(t, cols, meta, n_teams), width="stretch",
+                        config={"displayModeBar": False}, key=f"prof_{grp}")
+
+# style (descriptive, not ranked)
+sty = st.columns(3)
+for col, c in zip(sty, ["o_neutral_pass", "o_rush_rate", "o_plays_pg"]):
+    m = meta["stats"][c]
+    col.metric(m["label"], ui.fmt(t.get(c), m["fmt"]))
 
 # ---------------------------------------------------------------- schedule
 st.subheader("Schedule & results")
@@ -100,6 +105,6 @@ with st.expander("Every stat, with national rank"):
     rows = []
     for c, m in meta["stats"].items():
         rk = t.get(f"{c}_rank")
-        rows.append({"Stat": m["label"], "Value": ui.fmt(t.get(c), m["fmt"]),
+        rows.append({"Category": m.get("cat", ""), "Stat": m["label"], "Value": ui.fmt(t.get(c), m["fmt"]),
                      "FBS rank": "" if rk is None or pd.isna(rk) else f"{int(rk)} of {n_teams}"})
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")

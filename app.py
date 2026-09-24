@@ -13,6 +13,7 @@ PAGES = {
     "home": st.Page("views/home.py", title="This week", icon="🗓️", default=True),
     "matchup": st.Page("views/matchup.py", title="Matchup preview", icon="⚔️", url_path="matchup"),
     "teams": st.Page("views/team.py", title="Teams", icon="🏈", url_path="team"),
+    "ratings": st.Page("views/ratings.py", title="Power ratings", icon="⚡", url_path="ratings"),
     "leaders": st.Page("views/leaders.py", title="National leaders", icon="📊", url_path="leaders"),
     "betting": st.Page("views/betting.py", title="Betting lab", icon="🧪", url_path="betting"),
 }
