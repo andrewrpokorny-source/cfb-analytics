@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from wf import espn   # keyless ESPN client; imports nothing that needs API keys
+
 st.set_page_config(page_title="CFB Quant Engine", page_icon="🏈", layout="wide")
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -96,6 +98,70 @@ def summarise(g):
     }
 
 
+@st.cache_data(ttl=600, show_spinner="Loading this week's games from ESPN...")
+def load_board():
+    """(season, week, DataFrame) for the slate ESPN is currently showing."""
+    yr, wk, rows = espn.current_week()
+    return yr, wk, pd.DataFrame(rows)
+
+
+def fmt_price(p):
+    if p is None or (isinstance(p, float) and np.isnan(p)):
+        return ""
+    p = int(p)
+    return f"+{p}" if p > 0 else str(p)
+
+
+def fmt_line(x, signed=True):
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return "—"
+    if x == 0 and signed:
+        return "PK"
+    return (f"{x:+g}" if signed else f"{x:g}")
+
+
+def board_table(b, ledger):
+    """One display row per game."""
+    picks = {}
+    if not ledger.empty:
+        for _, r in ledger[ledger["result"].isna()].iterrows():
+            picks.setdefault(r["game"], []).append(
+                f"{r['side'].title() if r['market']=='total' else r['side']} "
+                f"{r['line_taken']:g} ({fmt_price(r['price_taken'])})")
+    out = []
+    for _, g in b.iterrows():
+        ko = pd.to_datetime(g["commence"], utc=True).tz_convert("America/New_York")
+        hr = f"#{int(g['home_rank'])} " if pd.notna(g.get("home_rank")) and g.get("home_rank", 99) <= 25 else ""
+        ar = f"#{int(g['away_rank'])} " if pd.notna(g.get("away_rank")) and g.get("away_rank", 99) <= 25 else ""
+        sp, so = g.get("spread"), g.get("spread_open")
+        tot, to = g.get("total"), g.get("total_open")
+        moved_sp = "" if pd.isna(so) or pd.isna(sp) or so == sp else f"  (open {fmt_line(so)})"
+        moved_t = "" if pd.isna(to) or pd.isna(tot) or to == tot else f"  (open {fmt_line(to, False)})"
+        if not g.get("fbs_vs_fbs", True):
+            flag = "vs FCS — out of scope"
+        elif g["game"] in picks:
+            flag = "📝 " + "; ".join(picks[g["game"]])
+        elif pd.notna(tot) and tot >= 58:
+            flag = "high total — under priced worse than −112"
+        else:
+            flag = ""
+        score = ""
+        if g.get("state") in ("in", "post") and pd.notna(g.get("home_score")):
+            score = f"{int(g['away_score'])}–{int(g['home_score'])} {g.get('status','')}"
+        out.append({
+            "Kickoff (ET)": ko.strftime("%a %-I:%M %p"),
+            "Matchup": f"{ar}{g['away']} @ {hr}{g['home']}" + (" (N)" if g.get("neutral") else ""),
+            "Home spread": f"{fmt_line(sp)} ({fmt_price(g.get('home_spread_price'))}){moved_sp}",
+            "Total": f"{fmt_line(tot, False)}  o{fmt_price(g.get('over_price'))} / u{fmt_price(g.get('under_price'))}{moved_t}",
+            "Moneyline (A / H)": f"{fmt_price(g.get('away_ml'))} / {fmt_price(g.get('home_ml'))}",
+            "Paper pick / note": flag,
+            "Score": score,
+            "TV": g.get("tv") or "",
+            "_ko": ko,
+        })
+    return pd.DataFrame(out).sort_values("_ko").drop(columns="_ko")
+
+
 # ------------------------------------------------------------ page
 
 st.title("🏈 CFB Quant Engine")
@@ -106,7 +172,33 @@ st.warning(
 )
 
 df = load_ledger()
-tab_ledger, tab_findings, tab_about = st.tabs(["Paper ledger", "Findings", "How to read this"])
+tab_week, tab_ledger, tab_findings, tab_about = st.tabs(
+    ["This week", "Paper ledger", "Findings", "How to read this"])
+
+with tab_week:
+    try:
+        yr, wk, board = load_board()
+    except Exception as e:
+        board = pd.DataFrame()
+        st.error(f"Couldn't reach ESPN right now ({e.__class__.__name__}). Try again shortly.")
+    if not board.empty:
+        n_fbs = int(board["fbs_vs_fbs"].sum()) if "fbs_vs_fbs" in board else len(board)
+        wk_led = df[(df["season"] == yr) & (df["week"] == wk)] if not df.empty else df
+        a, b_, c = st.columns(3)
+        a.metric(f"{yr} · Week {wk}", f"{len(board)} games")
+        b_.metric("FBS vs FBS", n_fbs)
+        c.metric("Paper picks this week", len(wk_led))
+        only = st.toggle("Only show games with a paper pick", value=False)
+        tbl = board_table(board, df)
+        if only:
+            tbl = tbl[tbl["Paper pick / note"].str.startswith("📝")]
+        st.dataframe(tbl, hide_index=True, width="stretch", height=min(38 * (len(tbl) + 1), 900))
+        st.caption(
+            "Lines: DraftKings via ESPN, refreshed every 10 minutes. Spread is from the home "
+            "team's side; prices in parentheses. 📝 marks paper bets in the ledger (no money). "
+            "Candidate rule shown: UNDER when the total is 58+ and the under is priced −112 or "
+            "better, FBS vs FBS only. It is being tracked, not proven — see Findings."
+        )
 
 with tab_ledger:
     if df.empty:

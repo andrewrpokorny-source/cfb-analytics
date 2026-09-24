@@ -215,17 +215,60 @@ def fetch_cfbd(year, week, season_type="regular", verbose=True):
     return quotes
 
 
+def fetch_espn(year, week=None, verbose=True):
+    """ESPN scoreboard: one book (DraftKings) but REAL prices, keyless."""
+    from . import espn
+    try:
+        rows = espn.week(year, week) if week is not None else espn.current_week()[2]
+    except Exception as e:
+        if verbose:
+            print(f"   ! espn fetch failed: {e}")
+        return []
+    now = _now()
+    quotes = []
+    for r in rows:
+        # Every backtest in this repo is FBS-vs-FBS; FCS matchups are out of scope.
+        if r.get("book") is None or not r.get("fbs_vs_fbs", True):
+            continue
+        gk, home, away, t, book = r["game"], r["home"], r["away"], r["commence"], r["book"]
+
+        def add(market, side, line, price):
+            if price is not None and (line is not None or market == "ml"):
+                quotes.append(Quote(gk, home, away, t, book, market, side, line, int(price), now))
+
+        if r.get("spread") is not None:
+            add("spread", home, r["spread"], r.get("home_spread_price"))
+            add("spread", away, -r["spread"], r.get("away_spread_price"))
+        if r.get("total") is not None:
+            add("total", "OVER", r["total"], r.get("over_price"))
+            add("total", "UNDER", r["total"], r.get("under_price"))
+        add("ml", home, None, r.get("home_ml"))
+        add("ml", away, None, r.get("away_ml"))
+    if verbose:
+        print(f"   [espn] {len(quotes)} quotes across {len({q.game_key for q in quotes})} games, "
+              f"1 book (DraftKings) with real prices")
+    return quotes
+
+
 def get_quotes(year, week=None, prefer="theoddsapi", verbose=True):
-    """Preferred feed, falling back to CFBD."""
-    if prefer == "theoddsapi":
-        q = fetch_theoddsapi(year=year, verbose=verbose)
+    """Best available feed: The Odds API (many books) -> ESPN (1 book, real
+    prices) -> CFBD (2-3 books, NO prices)."""
+    order = {"theoddsapi": ["theoddsapi", "espn", "cfbd"],
+             "espn": ["espn", "cfbd"], "cfbd": ["cfbd"]}.get(prefer, [prefer])
+    for src in order:
+        if src == "theoddsapi":
+            q = fetch_theoddsapi(year=year, verbose=verbose)
+        elif src == "espn":
+            q = fetch_espn(year, week, verbose=verbose)
+        else:
+            if week is None:
+                raise ValueError("CFBD fallback needs a week")
+            q = fetch_cfbd(year, week, verbose=verbose)
         if q:
             return q
         if verbose:
-            print("   falling back to CFBD lines...")
-    if week is None:
-        raise ValueError("CFBD fallback needs a week")
-    return fetch_cfbd(year, week, verbose=verbose)
+            print(f"   {src}: nothing, trying next source...")
+    return []
 
 
 def save_quotes(quotes, path):

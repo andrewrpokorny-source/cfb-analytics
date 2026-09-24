@@ -344,11 +344,29 @@ def cmd_grade(season):
                 continue
             scores[f"{a} @ {h}"] = (hp, ap)
 
+    # ESPN fallback: keeps grading working when the CFBD quota is exhausted,
+    # and covers bets logged from the ESPN feed (its team names).
+    from . import espn
+    now = pd.Timestamp.now(tz="UTC")
+    espn_cache = {}
+
     n = 0
     for idx, r in pending.iterrows():
         s = scores.get(r["game"])
         if not s:
-            continue
+            ko = pd.to_datetime(r.get("commence"), errors="coerce", utc=True)
+            if pd.isna(ko) or ko > now - pd.Timedelta(hours=4):
+                continue                      # not played yet
+            if r["game"] not in espn_cache:
+                try:
+                    espn_cache[r["game"]] = espn.find_result(r["game"], ko.to_pydatetime())
+                except Exception as e:
+                    print(f"   ! espn lookup failed for {r['game']}: {e}")
+                    espn_cache[r["game"]] = None
+            e = espn_cache[r["game"]]
+            if not e:
+                continue
+            s = (e["home_score"], e["away_score"])
         hp, ap = s
         led.at[idx, "home_score"], led.at[idx, "away_score"] = hp, ap
         line, side, market = r["line_taken"], r["side"], r["market"]
