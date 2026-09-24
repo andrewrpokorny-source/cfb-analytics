@@ -2,42 +2,12 @@
 
 Deployed on Streamlit Community Cloud from this repo. Reads stats snapshots in
 site_data/ (built by `python -m cfbsite.build`) plus live ESPN data. Needs no
-API keys. The password lives in Streamlit Cloud app settings (Secrets).
+API keys. Public: no password (removed 2026-09-23 at the owner's request).
 """
-import hmac
-
 import streamlit as st
 
 st.set_page_config(page_title="CFB Stats", page_icon="🏈", layout="wide")
 
-
-def _password():
-    try:
-        expected = st.secrets.get("password")
-    except Exception:
-        expected = None
-    if not expected:
-        st.title("🔒 Not configured")
-        st.error("No password is set. Add `password = \"...\"` under "
-                 "App settings → Secrets in Streamlit Community Cloud.")
-        return False
-    if st.session_state.get("authed"):
-        return True
-
-    def entered():
-        ok = hmac.compare_digest(st.session_state.get("pw", ""), str(expected))
-        st.session_state["authed"] = ok
-        st.session_state.pop("pw", None)
-
-    st.title("🔒 CFB Stats")
-    st.text_input("Password", type="password", on_change=entered, key="pw")
-    if st.session_state.get("authed") is False:
-        st.error("Incorrect password")
-    return False
-
-
-if not _password():
-    st.stop()
 
 PAGES = {
     "home": st.Page("views/home.py", title="This week", icon="🗓️", default=True),
@@ -48,3 +18,5 @@ PAGES = {
 }
 st.session_state["PAGES"] = PAGES
 st.navigation(list(PAGES.values())).run()
+st.caption("Data: ESPN (scores, play-by-play, DraftKings lines). Stats computed by this site. "
+           "For information and entertainment only — not betting advice.")
