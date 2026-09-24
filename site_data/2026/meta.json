@@ -1,0 +1,153 @@
+{
+ "season": 2026,
+ "weeks": [
+  1,
+  4
+ ],
+ "built_at": "2026-09-24T02:03:51+00:00",
+ "fbs_teams": 138,
+ "games": 331,
+ "final_games": 260,
+ "stats": {
+  "win_pct": {
+   "label": "Win %",
+   "higher_better": true,
+   "fmt": "pct"
+  },
+  "ppg": {
+   "label": "Points per game",
+   "higher_better": true,
+   "fmt": "1f"
+  },
+  "opp_ppg": {
+   "label": "Points allowed per game",
+   "higher_better": false,
+   "fmt": "1f"
+  },
+  "margin_pg": {
+   "label": "Scoring margin",
+   "higher_better": true,
+   "fmt": "+1f"
+  },
+  "o_ypp": {
+   "label": "Yards per play",
+   "higher_better": true,
+   "fmt": "2f"
+  },
+  "o_sr": {
+   "label": "Success rate",
+   "higher_better": true,
+   "fmt": "pct"
+  },
+  "o_expl": {
+   "label": "Explosive play rate (20+ yds)",
+   "higher_better": true,
+   "fmt": "pct"
+  },
+  "o_ppd": {
+   "label": "Points per drive",
+   "higher_better": true,
+   "fmt": "2f"
+  },
+  "o_rush_ypc": {
+   "label": "Yards per rush",
+   "higher_better": true,
+   "fmt": "2f"
+  },
+  "o_pass_ypd": {
+   "label": "Yards per dropback",
+   "higher_better": true,
+   "fmt": "2f"
+  },
+  "o_rush_rate": {
+   "label": "Run rate",
+   "higher_better": null,
+   "fmt": "pct"
+  },
+  "o_third": {
+   "label": "3rd-down conversion",
+   "higher_better": true,
+   "fmt": "pct"
+  },
+  "o_rz_td": {
+   "label": "Red-zone TD rate",
+   "higher_better": true,
+   "fmt": "pct"
+  },
+  "o_havoc_allowed": {
+   "label": "Havoc allowed",
+   "higher_better": false,
+   "fmt": "pct"
+  },
+  "o_plays_pg": {
+   "label": "Plays per game",
+   "higher_better": null,
+   "fmt": "1f"
+  },
+  "d_ypp": {
+   "label": "Yards per play allowed",
+   "higher_better": false,
+   "fmt": "2f"
+  },
+  "d_sr": {
+   "label": "Success rate allowed",
+   "higher_better": false,
+   "fmt": "pct"
+  },
+  "d_expl": {
+   "label": "Explosive plays allowed",
+   "higher_better": false,
+   "fmt": "pct"
+  },
+  "d_ppd": {
+   "label": "Points per drive allowed",
+   "higher_better": false,
+   "fmt": "2f"
+  },
+  "d_rush_ypc": {
+   "label": "Yards per rush allowed",
+   "higher_better": false,
+   "fmt": "2f"
+  },
+  "d_pass_ypd": {
+   "label": "Yards per dropback allowed",
+   "higher_better": false,
+   "fmt": "2f"
+  },
+  "d_third": {
+   "label": "3rd-down conversion allowed",
+   "higher_better": false,
+   "fmt": "pct"
+  },
+  "d_rz_td": {
+   "label": "Red-zone TD rate allowed",
+   "higher_better": false,
+   "fmt": "pct"
+  },
+  "d_havoc": {
+   "label": "Havoc rate (defense)",
+   "higher_better": true,
+   "fmt": "pct"
+  },
+  "to_margin_pg": {
+   "label": "Turnover margin per game",
+   "higher_better": true,
+   "fmt": "+2f"
+  },
+  "penalty_yds_pg": {
+   "label": "Penalty yards per game",
+   "higher_better": false,
+   "fmt": "1f"
+  },
+  "net_ypp": {
+   "label": "Net yards per play",
+   "higher_better": true,
+   "fmt": "+2f"
+  },
+  "net_sr": {
+   "label": "Net success rate",
+   "higher_better": true,
+   "fmt": "+pct"
+  }
+ }
+}

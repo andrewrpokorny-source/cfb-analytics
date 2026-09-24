@@ -75,6 +75,32 @@ def _side(odds, market, side, which):
     return _num(node.get("line")), _num(node.get("odds"))
 
 
+def lines_from_odds(odds):
+    """ESPN odds/pickcenter item -> flat line dict (home-perspective spread).
+
+    Same structure on the live scoreboard and in a game summary's pickcenter,
+    which is where closing lines survive after the game is final."""
+    out = {"book": (odds.get("provider") or {}).get("name")}
+    for which in ("close", "open"):          # ESPN calls the current number "close"
+        tag = "" if which == "close" else "_open"
+        hl, hp = _side(odds, "pointSpread", "home", which)
+        _, ap = _side(odds, "pointSpread", "away", which)
+        ol, op = _side(odds, "total", "over", which)
+        ul, up = _side(odds, "total", "under", which)
+        _, hml = _side(odds, "moneyline", "home", which)
+        _, aml = _side(odds, "moneyline", "away", which)
+        out.update({f"spread{tag}": hl, f"home_spread_price{tag}": hp,
+                    f"away_spread_price{tag}": ap,
+                    f"total{tag}": ol if ol is not None else ul,
+                    f"over_price{tag}": op, f"under_price{tag}": up,
+                    f"home_ml{tag}": hml, f"away_ml{tag}": aml})
+    if out.get("spread") is None:
+        out["spread"] = _num(odds.get("spread"))
+    if out.get("total") is None:
+        out["total"] = _num(odds.get("overUnder"))
+    return out
+
+
 def parse_event(ev):
     """One ESPN event -> flat dict (lines are home-perspective like CFBD)."""
     c = ev["competitions"][0]
@@ -100,24 +126,7 @@ def parse_event(ev):
     row["game"] = f"{row['away']} @ {row['home']}"
     odds = (c.get("odds") or [None])[0]
     if odds:
-        row["book"] = (odds.get("provider") or {}).get("name")
-        for which in ("close", "open"):          # ESPN calls the current number "close"
-            tag = "" if which == "close" else "_open"
-            hl, hp = _side(odds, "pointSpread", "home", which)
-            al, ap = _side(odds, "pointSpread", "away", which)
-            ol, op = _side(odds, "total", "over", which)
-            ul, up = _side(odds, "total", "under", which)
-            _, hml = _side(odds, "moneyline", "home", which)
-            _, aml = _side(odds, "moneyline", "away", which)
-            row.update({f"spread{tag}": hl, f"home_spread_price{tag}": hp,
-                        f"away_spread_price{tag}": ap,
-                        f"total{tag}": ol if ol is not None else ul,
-                        f"over_price{tag}": op, f"under_price{tag}": up,
-                        f"home_ml{tag}": hml, f"away_ml{tag}": aml})
-        if row.get("spread") is None:
-            row["spread"] = _num(odds.get("spread"))
-        if row.get("total") is None:
-            row["total"] = _num(odds.get("overUnder"))
+        row.update(lines_from_odds(odds))
     return row
 
 
